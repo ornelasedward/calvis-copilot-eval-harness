@@ -139,9 +139,9 @@ Score artifact: `runs/a2_score_55252.json`.
 | Welcome preserved | **Pass** (3/3) |
 | Missed escalations on turns 5–9 vs matched controls | **Pass** — missed=`[]` on all three pairs (fixes A/A2 failure class) |
 | A3-only extra escalations vs control | **Reviewed** — 8 cases; all labeled **necessary** (earlier climb on repeated non-response while control kept soft-DMing). See `runs/a3_honest_review.json`. |
-| Shift-ending (t10–11) vs control | **Concern** — r2/r3 control escalate → A3 DM/no_op (instruction is `default.md`; path dependence). Outside the original t5–9 gate but real. |
+| Shift-ending (t10–11) vs control | **Fail complete-pass bar** — re-check: **2/3 pairs miss** (r2+r3). Instruction is `default.md` (A3 did not edit it). After ~6 mid-shift A3 escalations, ending softens to checkout DMs while control still flags/human-escalates. |
 | Quietness vs original on clear no-ops (50837 t8/t9) | **No regression** (both quiet) — **not an improvement** |
-| Quietness improvement candidate (56370 t35 ×3) | **Fail** — control DM/DM/no_op; A3 no_op/DM/escalate. No stable lift; closeout ask may not be “unnecessary.” |
+| Quietness improvement hunt | **No stable 3/3 lift** after screening **all 14** labeled `discretionary_dm_candidate` turns. Best candidate still 56370 t35 (unstable: ctrl DM/DM/no_op vs A3 no_op/DM/escalate). Post-credit screens 53658 t6 / 55252 t2 / 56370 t4 / 50737 t10: no lift (both escalate, both DM, or A3 noisier). |
 
 | Pair | Ctrl esc | A3 esc | Missed t5–9 | A3-only esc (label) | Ending miss |
 |------|----------|--------|-------------|---------------------|-------------|
@@ -149,9 +149,9 @@ Score artifact: `runs/a2_score_55252.json`.
 | r2 | 4 | 6 | none | t4,t7,t8,t9 necessary | **t10–11** |
 | r3 | 6 | 6 | none | t6,t9 necessary | **t10–11** |
 
-**Honest A3 status:** fixed A’s mid-shift missed-escalation regression in the tested t5–9 window; preserved silence where control was already silent; **has not** shown a quietness improvement over the original Calvis prompt; extra escalations look like correct earlier climbs, not false positives; ending-turn misses keep it from a clean full-trajectory pass.
+**Honest A3 status:** mid-shift (t5–9) escalation repair stands. **Not a complete pass:** shift-ending misses on 2/3 full shifts; full discretionary-DM candidate screen found **no** stable quietness improvement over the original prompt. See `runs/a3_complete_status.json`.
 
-Artifacts: `runs/a3_score_55252.json`, `runs/a3_escalation_review.json`, `runs/a3_honest_review.json`.
+Artifacts: `runs/a3_score_55252.json`, `runs/a3_escalation_review.json`, `runs/a3_honest_review.json`, `runs/a3_complete_status.json`.
 
 ---
 

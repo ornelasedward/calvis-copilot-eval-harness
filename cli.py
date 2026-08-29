@@ -51,6 +51,114 @@ def _data_version() -> str:
     return h.hexdigest()[:12]
 
 
+def _make_adapter(adapter: str, model: str):
+    from harness.adapters.anthropic import AnthropicAdapter
+    from harness.adapters.openai import OpenAIAdapter
+
+    if adapter == "anthropic":
+        return AnthropicAdapter(model=model)
+    if adapter == "openai":
+        return OpenAIAdapter(model=model)
+    raise SystemExit(f"unknown adapter: {adapter}")
+
+
+def _model_params(adapter: str, model: str) -> dict:
+    if adapter == "openai" and str(model).startswith("gpt-5"):
+        return {"reasoning_effort": "none"}
+    return {"temperature": 0}
+
+
+def run_jobs(
+    *,
+    variant: str,
+    run_id: str,
+    mode: str,
+    jobs: list[dict],
+    adapter: str = "openai",
+    model: str = "gpt-5.6-sol",
+    repeat: int = 1,
+    allow_empty_obligations: bool = False,
+) -> str:
+    """In-process multi-shift run used by recipes. One create + one seal."""
+    variant_dir = Path(variant)
+    if not variant_dir.is_absolute():
+        variant_dir = ROOT / variant_dir
+    if not (variant_dir / "core").exists():
+        raise SystemExit(f"variant missing core/: {variant_dir}")
+
+    model_params = _model_params(adapter, model)
+    store = ExperimentStore(ROOT / "runs")
+    shifts = [str(j["shift"]) for j in jobs]
+    manifest = RunManifest(
+        run_id=run_id,
+        variant_name=variant_dir.name,
+        prompt_hash=prompt_dir_hash(variant_dir),
+        model=model,
+        model_params=model_params,
+        adapter=adapter,
+        data_version=_data_version(),
+        code_version=_code_version(),
+        mode=mode,
+        shifts=shifts,
+        repetitions=repeat,
+        created_at=datetime.now(timezone.utc).isoformat(),
+        tool_fixture_mode="exact_or_unavailable",
+    )
+    store.create_run(manifest)
+    ad = _make_adapter(adapter, model)
+    grand = {"turns": 0, "cost_usd": 0.0}
+
+    for job in jobs:
+        sid = str(job["shift"])
+        turns = job.get("turns")
+        shift = load_shift(ROOT / "shifts" / f"{sid}.json")
+        engine = ReplayEngine(
+            shift=shift,
+            adapter=ad,  # type: ignore[arg-type]
+            config=EngineConfig(
+                variant_dir=variant_dir,
+                mode=mode,  # type: ignore[arg-type]
+                allow_empty_obligations=allow_empty_obligations,
+                model_params=model_params,
+            ),
+            run_id=run_id,
+        )
+        schedule = build_schedule(shift)
+        if turns:
+            want = set(int(t) for t in turns)
+            schedule = [w for w in schedule if w.turn in want]
+        for wake in schedule:
+            if wake.skipped:
+                continue
+            result = engine.run_turn(wake.turn, wake.trigger, wake.ts)
+            store.append_turn(run_id, sid, result)
+            store.write_raw_trace(
+                run_id,
+                sid,
+                [
+                    {
+                        "turn": wake.turn,
+                        "trigger": wake.trigger,
+                        "selected_instruction": result.selected_instruction,
+                        "events": result.raw_events,
+                    }
+                ],
+            )
+            print(
+                f"[{sid} t{wake.turn} {wake.trigger}] "
+                f"{result.decision} dms={len(result.messages)} "
+                f"gaps={len(result.data_gaps)} conf={result.confidence} "
+                f"instr={result.selected_instruction} "
+                f"cost=${result.usage.cost_usd:.4f}"
+            )
+            grand["turns"] += 1
+            grand["cost_usd"] += result.usage.cost_usd
+
+    store.seal_run(run_id, grand)
+    print(f"done -> runs/{run_id}  total_cost=${grand['cost_usd']:.4f}")
+    return run_id
+
+
 def cmd_import_baseline(args: argparse.Namespace) -> None:
     store = ExperimentStore(ROOT / "runs")
     run_id = args.run_id or f"baseline_{new_run_id()}"
@@ -86,90 +194,35 @@ def cmd_import_baseline(args: argparse.Namespace) -> None:
 
 
 def cmd_run(args: argparse.Namespace) -> None:
-    from harness.adapters.anthropic import AnthropicAdapter
-    from harness.adapters.openai import OpenAIAdapter
-
-    variant_dir = Path(args.variant)
-    if not variant_dir.is_absolute():
-        variant_dir = ROOT / variant_dir
-    if not (variant_dir / "core").exists():
-        sys.exit(f"variant missing core/: {variant_dir}")
-
-    if args.adapter == "anthropic":
-        adapter: object = AnthropicAdapter(model=args.model)
-    elif args.adapter == "openai":
-        adapter = OpenAIAdapter(model=args.model)
-    else:
-        sys.exit(f"unknown adapter: {args.adapter}")
-
-    model_params: dict = {"temperature": 0}
-    if args.adapter == "openai" and str(args.model).startswith("gpt-5"):
-        # Chat Completions + tools requires reasoning_effort=none on gpt-5.6-sol.
-        model_params = {"reasoning_effort": "none"}
-
-    store = ExperimentStore(ROOT / "runs")
+    jobs = [{"shift": sid, "turns": args.turns} for sid in args.shifts]
+    if args.max_turns and not args.turns:
+        # max_turns applies per shift when turns not specified
+        for job in jobs:
+            job["max_turns"] = args.max_turns
     run_id = args.run_id or new_run_id()
-    manifest = RunManifest(
-        run_id=run_id,
-        variant_name=variant_dir.name,
-        prompt_hash=prompt_dir_hash(variant_dir),
-        model=args.model,
-        model_params=model_params,
-        adapter=args.adapter,
-        data_version=_data_version(),
-        code_version=_code_version(),
-        mode=args.mode,
-        shifts=args.shifts,
-        repetitions=args.repeat,
-        created_at=datetime.now(timezone.utc).isoformat(),
-        tool_fixture_mode="exact_or_unavailable",
-    )
-    store.create_run(manifest)
-
-    grand = {"turns": 0, "cost_usd": 0.0}
-    for sid in args.shifts:
-        shift = load_shift(ROOT / "shifts" / f"{sid}.json")
-        engine = ReplayEngine(
-            shift=shift,
-            adapter=adapter,  # type: ignore[arg-type]
-            config=EngineConfig(
-                variant_dir=variant_dir,
-                mode=args.mode,
-                allow_empty_obligations=args.allow_empty_obligations,
-                model_params=model_params,
-            ),
-            run_id=run_id,
-        )
-        schedule = build_schedule(shift)
-        if args.max_turns:
-            schedule = schedule[: args.max_turns]
-        if args.turns:
-            want = set(args.turns)
-            schedule = [w for w in schedule if w.turn in want]
-
-        for wake in schedule:
-            if wake.skipped:
-                continue
-            result = engine.run_turn(wake.turn, wake.trigger, wake.ts)
-            store.append_turn(run_id, sid, result)
-            store.write_raw_trace(run_id, sid, [{
-                "turn": wake.turn,
-                "trigger": wake.trigger,
-                "selected_instruction": result.selected_instruction,
-                "events": result.raw_events,
-            }])
-            print(
-                f"[{sid} t{wake.turn} {wake.trigger}] "
-                f"{result.decision} dms={len(result.messages)} "
-                f"gaps={len(result.data_gaps)} conf={result.confidence} "
-                f"instr={result.selected_instruction} "
-                f"cost=${result.usage.cost_usd:.4f}"
+    # honor max_turns via schedule slice inside a thin wrapper
+    if args.max_turns and not args.turns:
+        variant_dir = Path(args.variant)
+        if not variant_dir.is_absolute():
+            variant_dir = ROOT / variant_dir
+        limited_jobs = []
+        for sid in args.shifts:
+            shift = load_shift(ROOT / "shifts" / f"{sid}.json")
+            schedule = build_schedule(shift)[: args.max_turns]
+            limited_jobs.append(
+                {"shift": sid, "turns": [w.turn for w in schedule if not w.skipped]}
             )
-            grand["turns"] += 1
-            grand["cost_usd"] += result.usage.cost_usd
-
-    store.seal_run(run_id, grand)
-    print(f"done -> runs/{run_id}  total_cost=${grand['cost_usd']:.4f}")
+        jobs = limited_jobs
+    run_jobs(
+        variant=args.variant,
+        run_id=run_id,
+        mode=args.mode,
+        jobs=jobs,
+        adapter=args.adapter,
+        model=args.model,
+        repeat=args.repeat,
+        allow_empty_obligations=args.allow_empty_obligations,
+    )
 
 
 def cmd_compare(args: argparse.Namespace) -> None:
@@ -225,6 +278,75 @@ def cmd_init_variants(_: argparse.Namespace) -> None:
     print("Edit variants/variant_a and variants/variant_b, then: py cli.py run --variant variants/variant_a")
 
 
+def cmd_recipes(_: argparse.Namespace) -> None:
+    from harness.recipes import list_analyze_targets, list_recipes
+
+    rows = list_recipes()
+    print("TEST RECIPES  (cx t <code>)")
+    print(f"  {'CODE':4}  {'MEANING':36}  RECIPE")
+    print("  " + "-" * 72)
+    for r in rows:
+        code = (r.get("aliases") or ["-"])[0]
+        meaning = ""
+        if r.get("alias_meaning"):
+            # "wl=welcome..." -> take after first =
+            parts = r["alias_meaning"].split("=", 1)
+            meaning = parts[1] if len(parts) > 1 else r["alias_meaning"]
+        print(f"  {code:4}  {meaning:36}  {r['name']}")
+
+    print("\nANALYZE TARGETS  (cx why <code>)")
+    print(f"  {'CODE':4}  {'MEANING':36}  PATH")
+    print("  " + "-" * 72)
+    for t in list_analyze_targets():
+        print(f"  {t['code']:4}  {t['meaning']:36}  {t['path']}")
+
+    print("\nExamples:  .\\cx t cl -n    .\\cx t es    .\\cx why v3 -n")
+
+
+def cmd_test(args: argparse.Namespace) -> None:
+    from harness.recipes import execute_recipe
+
+    result = execute_recipe(
+        args.recipe,
+        run_jobs_fn=run_jobs,
+        adapter=args.adapter,
+        model=args.model,
+        candidate_variant=args.variant,
+        control_variant=args.control,
+        repeat=args.repeat,
+        dry_run=args.dry_run,
+    )
+    if args.dry_run:
+        print(json.dumps(result["plan"], indent=2))
+        return
+    if result.get("pass") is False:
+        sys.exit(1)
+
+
+def cmd_analyze(args: argparse.Namespace) -> None:
+    from harness.advisor import run_advisor
+
+    control_variant = args.control_variant
+    variant = args.variant
+    if args.diff:
+        if len(args.diff) != 2:
+            sys.exit("--diff needs exactly two paths: baseline candidate")
+        control_variant, variant = args.diff
+    out = run_advisor(
+        control_variant=control_variant,
+        variant=variant,
+        control_run=args.control_run,
+        variant_run=args.variant_run,
+        shift=args.shift,
+        focus_turns=args.focus_turns,
+        adapter=args.adapter,
+        model=args.model,
+        skip_llm=args.no_llm,
+    )
+    print(out["narrative"])
+    print(f"\nwrote {out['out_dir']}/advisor_report.md")
+
+
 def main(argv: list[str] | None = None) -> None:
     p = argparse.ArgumentParser(prog="calvis-eval")
     sub = p.add_subparsers(dest="cmd", required=True)
@@ -258,6 +380,35 @@ def main(argv: list[str] | None = None) -> None:
 
     i = sub.add_parser("init-variants", help="Seed variants/ from prompts/")
     i.set_defaults(func=cmd_init_variants)
+
+    lr = sub.add_parser("recipes", help="List short named eval recipes")
+    lr.set_defaults(func=cmd_recipes)
+
+    t = sub.add_parser("test", help="Run a named recipe (control + candidate + score)")
+    t.add_argument("recipe", help="Recipe name (see: py cli.py recipes)")
+    t.add_argument("--adapter", choices=["anthropic", "openai"], default=None)
+    t.add_argument("--model", default=None)
+    t.add_argument("--variant", default=None, help="Override candidate variant path")
+    t.add_argument("--control", default=None, help="Override control variant path")
+    t.add_argument("--repeat", type=int, default=1)
+    t.add_argument("--dry-run", action="store_true", help="Print plan only; no API calls")
+    t.set_defaults(func=cmd_test)
+
+    a = sub.add_parser(
+        "analyze",
+        help="Agentic advisor: explain prompt diff / gates (scorers own pass/fail)",
+    )
+    a.add_argument("--diff", nargs=2, metavar=("BASELINE", "CANDIDATE"), default=None)
+    a.add_argument("--control-variant", default=None)
+    a.add_argument("--variant", default=None)
+    a.add_argument("--control-run", default=None)
+    a.add_argument("--variant-run", default=None)
+    a.add_argument("--shift", default=None)
+    a.add_argument("--focus-turns", type=int, nargs="*", default=None)
+    a.add_argument("--adapter", choices=["anthropic", "openai"], default="openai")
+    a.add_argument("--model", default="gpt-5.6-sol")
+    a.add_argument("--no-llm", action="store_true", help="Facts + stub narrative only")
+    a.set_defaults(func=cmd_analyze)
 
     args = p.parse_args(argv)
     args.func(args)
