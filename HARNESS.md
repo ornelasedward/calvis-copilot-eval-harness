@@ -8,25 +8,54 @@ Custom, model-agnostic, zero real side effects.
 ```bash
 py -m pip install -r requirements.txt
 py -m pytest tests -q
-py cli.py init-variants
-py cli.py import-baseline --shifts 56370 55252 50737
 ```
 
-Set `ANTHROPIC_API_KEY` (and/or `OPENAI_API_KEY`), then:
+Set API keys in `.env`, then use the **short** launcher from the repo root:
 
 ```bash
-# Fast inner loop: one turn against baseline-threaded history
-py cli.py run --variant variants/variant_a --mode turn --shifts 56370 --turns 29 --adapter anthropic
-
-# Full shift replay (frozen guard messages)
-py cli.py run --variant variants/variant_a --mode shift --shifts 56370 55252 --adapter anthropic
-
-# Compare + assertions
-py cli.py compare --baseline <baseline_run_id> --variant <variant_run_id> --shift 56370 --assertions experiments/assertions.json
-
-# Dashboard
-py -m harness.dashboard --baseline <baseline_run_id> --variant <variant_run_id> --shift 56370
+.\cx                  # list codes + meanings
+.\cx t cl -n          # claims verification (B) — dry-run
+.\cx t cl             # claims verification (B) — live
+.\cx t wl             # welcome smoke
+.\cx t es             # escalation safety full-shift (A3)
+.\cx t qt             # quietness probe (A3)
+.\cx why v3           # advisor on Variant A3 diff
+.\cx why vb -n        # advisor on B, no LLM
 ```
+
+| Code | Means |
+|------|--------|
+| `wl` | welcome / smoke sanity |
+| `cl` | claims verification (Variant B) |
+| `es` | escalation safety full-shift (A3) |
+| `qt` | quietness probe (A3) |
+| `va`/`v2`/`v3`/`vb` | analyze Variant A / A2 / A3 / B |
+
+Same via Python: `py calvis.py t cl` / `py calvis.py why v3`.
+
+## CI
+
+GitHub Actions (`.github/workflows/eval.yml`):
+
+- On push/PR to `main` or `staging`: pytest + `calvis.py ls` + dry-run `t cl` / `why vb`
+- Manual **workflow_dispatch** with `live_recipes=true`: runs `t wl` if `OPENAI_API_KEY` repo secret is set
+
+```bash
+# Local mirror of CI offline gate
+py -m pytest tests -q
+py calvis.py t cl -n
+```
+
+## Recipes (see `experiments/recipes.json`)
+
+| Name | What it checks |
+|------|----------------|
+| `smoke-welcome` | Turn 1 welcome preserved |
+| `b-claims` | Work-claim verification lift (`verify_b`) |
+| `a3-shift-55252` | No missed escalations on 55252 turns 5–9 |
+| `a3-quiet-probe` | Quietness no-regression on clear no-op turns |
+
+Deterministic scorers own **PASS/FAIL**. The advisor only narrates.
 
 ## MVP shifts
 
@@ -38,16 +67,19 @@ py -m harness.dashboard --baseline <baseline_run_id> --variant <variant_run_id> 
 
 ## Variants
 
-- `variants/variant_a` — stricter no-op discipline on scheduled wakes
+- `variants/variant_a` — stricter no-op (stop-ship; trajectory under-escalation)
+- `variants/variant_a2` — stacked safety (blocked)
+- `variants/variant_a3` — ordered mandatory-then-quiet (safety repair; not complete quietness pass)
 - `variants/variant_b` — mandatory `get_guard_locations` before affirming work claims
 
 ## Architecture principles
 
 - Baseline is reference, not truth
+- Live comparison uses same-model original-prompt control
 - `get_open_obligations` defaults to `data_unavailable` (empty ledger would invent "nothing owed")
 - Action tools record only — never execute
 - No nearest-match fixtures
 - ModelAdapter is transport only; eval standard is Calvis-owned
 - Run artifacts are append-only and content-hashed
 
-See the take-home writeup for open-question answers and audit findings.
+See `WRITEUP.md` for open-question answers and experiment findings.

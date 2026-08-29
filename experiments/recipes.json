@@ -1,0 +1,79 @@
+{
+  "defaults": {
+    "adapter": "openai",
+    "model": "gpt-5.6-sol",
+    "control_variant": "variants/baseline"
+  },
+  "aliases": {
+    "wl": "smoke-welcome",
+    "cl": "b-claims",
+    "es": "a3-shift-55252",
+    "qt": "a3-quiet-probe"
+  },
+  "alias_help": {
+    "wl": "welcome / smoke sanity",
+    "cl": "claims verification (Variant B)",
+    "es": "escalation safety full-shift (A3)",
+    "qt": "quietness probe (A3)"
+  },
+  "analyze_targets": {
+    "va": "variants/variant_a",
+    "v2": "variants/variant_a2",
+    "v3": "variants/variant_a3",
+    "vb": "variants/variant_b"
+  },
+  "analyze_help": {
+    "va": "Variant A (quietness / stop-ship)",
+    "v2": "Variant A2 (stacked safety / blocked)",
+    "v3": "Variant A3 (ordered safety repair)",
+    "vb": "Variant B (claim verification)"
+  },
+  "recipes": {
+    "smoke-welcome": {
+      "description": "Fast sanity: session welcome on 55252 turn 1 (control vs variant_a3).",
+      "control_variant": "variants/baseline",
+      "candidate_variant": "variants/variant_a3",
+      "mode": "turn",
+      "jobs": [
+        {"shift": "55252", "turns": [1]}
+      ],
+      "scorer": "welcome",
+      "suggested_when": ["any prompt change"]
+    },
+    "b-claims": {
+      "description": "Variant B: verify patrol/work claims on selected guard_message turns.",
+      "control_variant": "variants/baseline",
+      "candidate_variant": "variants/variant_b",
+      "mode": "turn",
+      "jobs": [
+        {"shift": "56370", "turns": [9, 10, 14, 16]},
+        {"shift": "50737", "turns": [6, 12, 18]}
+      ],
+      "scorer": "verify_b",
+      "suggested_when": ["guard_response.md"]
+    },
+    "a3-shift-55252": {
+      "description": "Variant A3 full-shift safety on silent-guard escalation ladder 55252.",
+      "control_variant": "variants/baseline",
+      "candidate_variant": "variants/variant_a3",
+      "mode": "shift",
+      "jobs": [
+        {"shift": "55252", "turns": null}
+      ],
+      "scorer": "escalation_focus",
+      "scorer_args": {"focus_turns": [5, 6, 7, 8, 9]},
+      "suggested_when": ["scheduled_check_in.md"]
+    },
+    "a3-quiet-probe": {
+      "description": "Quietness probe: clear no-op turns (50837 t8/t9) control vs A3.",
+      "control_variant": "variants/baseline",
+      "candidate_variant": "variants/variant_a3",
+      "mode": "turn",
+      "jobs": [
+        {"shift": "50837", "turns": [8, 9]}
+      ],
+      "scorer": "quietness",
+      "suggested_when": ["scheduled_check_in.md"]
+    }
+  }
+}
