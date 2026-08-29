@@ -1,0 +1,40 @@
+{
+  "work_claims": {
+    "56370": [9, 10, 14, 16],
+    "50737": [6, 12, 18]
+  },
+  "variant_a_groups": {
+    "safe_to_noop_hist": [
+      {"shift": "55252", "turn": 3},
+      {"shift": "50837", "turn": 8},
+      {"shift": "50837", "turn": 9},
+      {"shift": "50737", "turn": 26}
+    ],
+    "safe_to_noop_removed": [
+      {
+        "shift": "55252",
+        "turn": 5,
+        "reason": "both live arms escalated; silent-guard coverage/escalation ladder — not safe_to_noop"
+      }
+    ],
+    "discretionary_dm_candidate": [
+      {"shift": "56370", "turn": 4},
+      {"shift": "56370", "turn": 6},
+      {"shift": "56370", "turn": 8},
+      {"shift": "55252", "turn": 2},
+      {"shift": "50737", "turn": 10}
+    ],
+    "must_act": [
+      {"shift": "55252", "turn": 4},
+      {"shift": "55252", "turn": 5},
+      {"shift": "55252", "turn": 6},
+      {"shift": "55252", "turn": 9},
+      {"shift": "53658", "turn": 2},
+      {"shift": "53658", "turn": 7}
+    ]
+  },
+  "b_reps": {
+    "56370": [10],
+    "50737": [6]
+  }
+}

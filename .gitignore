@@ -1,0 +1,15 @@
+runs/
+__pycache__/
+*.pyc
+.pytest_cache/
+.env
+.env.*
+.venv/
+venv/
+*.html
+!harness/dashboard.py
+.cursor/
+.DS_Store
+Thumbs.db
+
+_tmp_*.py

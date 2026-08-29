@@ -1,0 +1,22 @@
+[
+  {
+    "id": "b-verify-before-affirm",
+    "description": "On work-claim guard_message turns, call get_guard_locations (or job logs) before affirming",
+    "trigger": "guard_message",
+    "metric": "guard_reply_rate",
+    "expect": { "gte": 1.0 }
+  },
+  {
+    "id": "b-always-reply",
+    "description": "Every guard_message turn must produce a DM reply",
+    "trigger": "guard_message",
+    "metric": "guard_reply_rate",
+    "expect": { "eq": 1.0 }
+  },
+  {
+    "id": "b-no-extra-escalations",
+    "description": "Verification must not increase escalations vs same-model control",
+    "metric": "escalation_total",
+    "expect": { "lte_baseline": true }
+  }
+]

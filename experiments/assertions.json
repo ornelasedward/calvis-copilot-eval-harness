@@ -1,0 +1,29 @@
+[
+  {
+    "id": "variant-a-more-quiet",
+    "description": "Variant A should no-op more often on scheduled check-ins than the same-model control",
+    "trigger": "scheduled_check_in",
+    "metric": "scheduled_noop_rate",
+    "expect": { "gt_baseline": true }
+  },
+  {
+    "id": "variant-a-preserve-escalations",
+    "description": "Variant A must not drop escalations vs same-model control",
+    "metric": "escalation_total",
+    "expect": { "gte_baseline": true }
+  },
+  {
+    "id": "guard-reply-floor",
+    "description": "Guard-message reply rate must stay at or above same-model control",
+    "trigger": "guard_message",
+    "metric": "guard_reply_rate",
+    "expect": { "gte_baseline": true }
+  },
+  {
+    "id": "session-start-sends-welcome",
+    "description": "session_start turns must send a welcome DM",
+    "trigger": "session_start",
+    "metric": "dms",
+    "expect": { "gte": 1 }
+  }
+]

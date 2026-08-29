@@ -1,0 +1,7 @@
+# Calvis replay harness
+# Python 3.11+
+tzdata>=2024.1        # IANA zones for zoneinfo on Windows
+pytest>=8.0
+anthropic>=0.40       # first ModelAdapter (transport only)
+openai>=1.50          # second ModelAdapter (transport only)
+python-dotenv>=1.0
