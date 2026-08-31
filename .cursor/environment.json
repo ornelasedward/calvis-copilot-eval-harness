@@ -1,0 +1,4 @@
+{
+  "name": "Calvis eval harness",
+  "install": "pip install --user -r requirements.txt"
+}
