@@ -8,25 +8,29 @@
     "wl": "smoke-welcome",
     "cl": "b-claims",
     "es": "a3-shift-55252",
-    "qt": "a3-quiet-probe"
+    "qt": "a3-quiet-probe",
+    "vo": "c-voice"
   },
   "alias_help": {
     "wl": "welcome / smoke sanity",
     "cl": "claims verification (Variant B)",
     "es": "escalation safety full-shift (A3)",
-    "qt": "quietness probe (A3)"
+    "qt": "quietness probe (A3)",
+    "vo": "voice compliance (Variant C)"
   },
   "analyze_targets": {
     "va": "variants/variant_a",
     "v2": "variants/variant_a2",
     "v3": "variants/variant_a3",
-    "vb": "variants/variant_b"
+    "vb": "variants/variant_b",
+    "vc": "variants/variant_c"
   },
   "analyze_help": {
     "va": "Variant A (quietness / stop-ship)",
     "v2": "Variant A2 (stacked safety / blocked)",
     "v3": "Variant A3 (ordered safety repair)",
-    "vb": "Variant B (claim verification)"
+    "vb": "Variant B (claim verification)",
+    "vc": "Variant C (voice compliance)"
   },
   "recipes": {
     "smoke-welcome": {
@@ -74,6 +78,18 @@
       ],
       "scorer": "quietness",
       "suggested_when": ["scheduled_check_in.md"]
+    },
+    "c-voice": {
+      "description": "Variant C: comms voice compliance (no em-dashes / sign-off filler / multi-DM) on message-heavy turns, control vs C.",
+      "control_variant": "variants/baseline",
+      "candidate_variant": "variants/variant_c",
+      "mode": "turn",
+      "jobs": [
+        {"shift": "56370", "turns": [1, 9, 10, 14, 16]},
+        {"shift": "50737", "turns": [1, 6, 12, 18]}
+      ],
+      "scorer": "voice",
+      "suggested_when": ["comms_policy.md"]
     }
   }
 }
