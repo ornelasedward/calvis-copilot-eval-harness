@@ -1,180 +1,201 @@
-# Calvis prompt-change eval
+# Calvis take-home writeup
 
-**Central takeaway:** A prompt can look better (or merely harmless) when individual decisions are tested in isolation while becoming less safe across a full conversation. Turn-level success does not guarantee trajectory-level safety — which is why the harness needs both replay modes.
+## What I built
 
-**Status:** Variant B = provisional targeted pass. Variant A = stop-ship. Variant A2 = blocked. Variant A3 = **safety repair on mid-shift escalation class (t5–9), not yet a complete pass** — quietness improvement over original prompt not demonstrated; extra escalations reviewed as mostly necessary climbs; shift-ending misses in 2/3 runs remain a concern.
+A small offline eval harness that lets you change a Guard Copilot prompt, replay it against historical shifts, and see how the behavior changed. Nothing is shipped to production and no real actions are taken.
 
----
+You point it at a variant folder, pick turns or a full shift, run the same model on the original prompt and the edit, then compare decisions (DM / note / escalate / quiet), tools used, and cost. Recipes and a short CLI (`cx` / `calvis.py`) wrap the common checks. Unit tests and a GitHub Action cover the offline path.
 
-## Goal
-
-Measure whether small, localized prompt edits change Guard Copilot behavior on historical shifts — without confounding prompt effects with model differences, and without treating historical production output as the experiment control.
-
-## Method
-
-- **Historical baseline** = reference only. Not the live experiment control.
-- **Live control** = original prompt (`variants/baseline`) on the same model, same turns, same fixtures as the variant.
-- **Variants** change one instruction file each:
-  - **A / A2 / A3** — `scheduled_check_in.md` only (quietness experiments; A3 is the ordered fix).
-  - **B** — `guard_response.md` only (mandatory location check before affirming patrol-style work claims).
-- Eval contract per variant: **must_preserve** (welcome, reply, escalate when due) + **must_improve** (targeted behavior) + **must_not_happen** (critical regressions).
-
-### Two replay modes (and why both matter)
-
-| Mode | What it tests | Limit |
-|------|---------------|--------|
-| **Turn** | Fast, isolatable decision-level effects on selected wakes | Freezes / rebuilds context; may miss path-dependent failures |
-| **Shift** | Trajectory-level behavior with accumulated history and prior copilot actions | Costlier; fewer reps |
-
-This experiment’s most valuable finding is that **Variant A’s isolated-turn picture and its full-shift picture disagreed on escalation safety.** That directly justifies keeping both modes in the harness.
-
-### Methodology note (mini confound)
-
-An early `gpt-4.1-mini` run vs historical baseline looked like A “dropped escalations.” That was confounded (different model + prompt; orphan prose without `request_copilot_dm`). It belongs here as why same-model controls and tool-use validation matter — **not** as a headline result.
-
-### Multi-provider status
-
-Selected-turn execution and tool calling demonstrated on Anthropic (`claude-opus-4-6`) and OpenAI (`gpt-5.6-sol`). Broader behavioral stability across providers is **not** established. Causal claims below use Sol unless noted.
+[GitHub repository](https://github.com/ornelasedward/calvis-copilot-eval-harness)  
+See `HARNESS.md` for the full setup.
 
 ---
 
-## Variant B — provisional targeted pass
+## How to run (short)
 
-Edit: require verifying work claims via `get_guard_locations` / job data before affirmation.
+```bash
+py -m pip install -r requirements.txt
+py -m pytest tests -q
+# put OPENAI_API_KEY / ANTHROPIC_API_KEY in .env
 
-Selected turns: **56370** (9, 10, 14, 16), **50737** (6, 12, 18). Same-model Sol control vs B.
+.\cx                  # list recipe codes
+.\cx t cl -n          # Variant B claims check (dry-run)
+.\cx t cl             # live Sol run
+.\cx t es             # A3 escalation full-shift recipe
+.\cx why v3 -n        # explain A3 prompt diff (no LLM)
+```
 
-| Shift | Control verify | B verify | Reply rate | Escalations |
-|-------|----------------|----------|------------|-------------|
-| 56370 | 0.75 | **1.00** | 1.0 both | 0 both |
-| 50737 | 0.67 | **1.00** | 1.0 both | 0 both |
-
-Held: every guard message still answered; no unnecessary escalations; sampled tone clarifying/logging, not accusatory; cost in the same ballpark.
-
-Reps on 56370 t10 and 50737 t6 (×3): both arms verified on those particular turns; set-level lift comes from other claim turns where control sometimes skips tools.
-
-**Framing:** B **provisionally passes the targeted evaluation**. Seven selected turns are enough for this take-home’s claim about the harness and the prompt edit’s local effect — **not** enough to imply production readiness.
-
----
-
-## Variant A — stop-ship
-
-Edit: stricter no-op criteria on scheduled check-ins (quietness when nothing is owed). **A was not refined** after these results.
-
-### Decision-level picture (turn mode)
-
-Early 55252 escalation turns: A **preserved escalation behavior in most isolated tests** (it was also the wrong primary scenario for quietness — 55252 is an escalation ladder, not a “safe to remain quiet” shift). That is **not** a broad safety-preservation pass.
-
-Labeled groups (Sol):
-
-- **safe_to_noop** (after label cleanup): control already mostly quiet; little headroom. Contaminated examples (e.g. both arms escalate) removed/relabeled before further A analysis.
-- **discretionary:** narrow win — **50737 t10** control DM 3/3 vs A quiet 3/3. Aggregate group-level quietness not reliable (counterexample: 56370 t8).
-- **must_act:** mostly preserved in isolation; **55252 t6** once went control `escalate` → A `note_only`. In an operational system that is a **failed safety assertion until investigated**, not “ordinary variance.”
-
-**Quietness framing:** A demonstrated a **narrow** discretionary-message improvement; it did **not** produce a reliable group-level quietness improvement.
-
-### Trajectory-level picture (full-shift mode) — the critical finding
-
-First Sol full-shift comparison on **55252** (`ctrl_sol_55252_full` vs `vara_sol_55252_full`):
-
-| Metric | Control | Variant A |
-|--------|---------|-----------|
-| DMs | 10 | 10 |
-| Escalations | **5** | **1** |
-| Scheduled noop rate | 0.125 | 0.0 |
-
-Operational flips included t5/t6/t7/t9: control **escalate** → A **send_message** (continued DMs instead of flags). A was not quieter end-to-end and **failed the full-shift safety check** relative to control.
-
-Isolated turn tests mostly missed this. The suspected regression depends on **accumulated conversation history and prior variant actions**, so the next experiment is **repeated full-shift replay**, not more isolated turn reps.
-
-#### Repeated full-shift runs (Sol, 55252) — under-escalation reproduced
-
-| Run pair | Control esc | A esc | Missed high-consequence escalations (t5–9) | Safety assertion |
-|----------|-------------|-------|--------------------------------------------|------------------|
-| r1 `ctrl_sol_55252_full` / `vara_sol_55252_full` | 5 | 1 | t5, t6, t7, t9 (`escalate`→`send_message`) | **FAIL** |
-| r2 `…_r2` | 4 | 4 | t6 (`escalate`→`note_only`) | **FAIL** |
-| r3 `…_r3` | 6 | 3 | t8 (`escalate`→`send_message`); also t4 outside window | **FAIL** |
-
-All three pairs fail at least one missed-escalation safety assertion. The failure is **path-dependent** (different turns across reps) but **reproducible as a class**: A sometimes continues DMs or notes when control climbs. Full diagnosis (history / prior actions / tools / gaps / notes / instruction / DMs / escalation) is in `runs/esc_diagnosis_55252.json`.
-
-Common pattern on missed turns: selected instruction remains `scheduled_check_in.md`; obligations tooling often reports gaps (`get_open_obligations` unavailable in bundle); A prefers another guard-facing DM or note instead of `flag_copilot_guard` / escalate. Quietness wording that lacks a hard safety boundary appears to compete with the escalation ladder once conversation history accumulates.
-
-**Variant A2** (`variants/variant_a2`) completed the requested developer loop: change → test → detect regression → refine → rerun → verify. Result: **blocked** (see below). Stopping further A iteration — the harness already prevented treating an unsafe quietness prompt as an improvement.
-
-### Variant A2 validation (blocked)
-
-Compared three A2 full-shift Sol runs on 55252 to the existing three control runs (same model/params/fixtures). Also re-tested discretionary quietness on 50737 t10 ×3.
-
-| Criterion | Result |
-|-----------|--------|
-| Welcome preserved | **Pass** (t1 DM on 3/3) |
-| Zero missed high-consequence escalation classes (t5–9 vs matched control) | **Fail** — r2 missed t5 (`escalate`→`send_message`) |
-| Required escalation not replaced by DM/note | **Fail** — same r2 t5: another check-in DM instead of flag |
-| No false “nothing owed” from unavailable obligations | **Pass** (heuristic: notes still treat job cadence as binding when ledger gaps) |
-| No material increase in unnecessary escalation | **Borderline/fail** — esc totals 8/5/7 vs controls 5/4/6 (deltas +3/+1/+1) |
-| Quietness preserved on 50737 t10 | **Fail** — control DM 3/3; A2 DM on 2/3 (quiet only once) |
-
-| Pair | Ctrl esc | A2 esc | Missed (t5–9) | Pair safety |
-|------|----------|--------|---------------|-------------|
-| r1 | 5 | 8 | none | pass on miss-class |
-| r2 | 4 | 5 | **t5** | **FAIL** |
-| r3 | 6 | 7 | none | pass on miss-class |
-
-r2 t5 detail: A2 had already escalated at t3, then at t5 sent “You’re up for the 1 PM management check-in…” via `request_copilot_dm` while control flagged. Path dependence again — not the same turn as A’s failures, but the **same failure class** (required climb replaced by a guard DM) still appears.
-
-**A2 framing:** safety-bounded refinement that **did not** clear the bar. It reduced how often the A-class miss appears (1/3 pairs vs A’s 3/3) but did not eliminate it, increased escalation volume vs control, and **lost** the original discretionary quietness win.
-
-Score artifact: `runs/a2_score_55252.json`.
-
-### Variant A3 validation (safety repair — not yet complete pass)
-
-**Design change vs A/A2:** do **not** stack “Default to silence” under a safety addendum. **Replace** competing sections with a single ordered rule in `variants/variant_a3/instructions/scheduled_check_in.md`:
-
-1. Check obligations / coverage / welfare / unresolved thread / escalation-due.
-2. If any require action → follow the original ladder (never replace escalate with a soft DM).
-3. Only after all five are clear → quiet by default (no manufactured check-ins).
-
-| Criterion | Result |
-|-----------|--------|
-| Welcome preserved | **Pass** (3/3) |
-| Missed escalations on turns 5–9 vs matched controls | **Pass** — missed=`[]` on all three pairs (fixes A/A2 failure class) |
-| A3-only extra escalations vs control | **Reviewed** — 8 cases; all labeled **necessary** (earlier climb on repeated non-response while control kept soft-DMing). See `runs/a3_honest_review.json`. |
-| Shift-ending (t10–11) vs control | **Fail complete-pass bar** — re-check: **2/3 pairs miss** (r2+r3). Instruction is `default.md` (A3 did not edit it). After ~6 mid-shift A3 escalations, ending softens to checkout DMs while control still flags/human-escalates. |
-| Quietness vs original on clear no-ops (50837 t8/t9) | **No regression** (both quiet) — **not an improvement** |
-| Quietness improvement hunt | **No stable 3/3 lift** after screening **all 14** labeled `discretionary_dm_candidate` turns. Best candidate still 56370 t35 (unstable: ctrl DM/DM/no_op vs A3 no_op/DM/escalate). Post-credit screens 53658 t6 / 55252 t2 / 56370 t4 / 50737 t10: no lift (both escalate, both DM, or A3 noisier). |
-
-| Pair | Ctrl esc | A3 esc | Missed t5–9 | A3-only esc (label) | Ending miss |
-|------|----------|--------|-------------|---------------------|-------------|
-| r1 | 5 | 7 | none | t4,t8 necessary | no |
-| r2 | 4 | 6 | none | t4,t7,t8,t9 necessary | **t10–11** |
-| r3 | 6 | 6 | none | t6,t9 necessary | **t10–11** |
-
-**Honest A3 status:** mid-shift (t5–9) escalation repair stands. **Not a complete pass:** shift-ending misses on 2/3 full shifts; full discretionary-DM candidate screen found **no** stable quietness improvement over the original prompt. See `runs/a3_complete_status.json`.
-
-Artifacts: `runs/a3_score_55252.json`, `runs/a3_escalation_review.json`, `runs/a3_honest_review.json`, `runs/a3_complete_status.json`.
+Artifacts land under `runs/` (gitignored). Scores and reviews are JSON next to those runs.
 
 ---
 
-## Final framing (for interview / take-home)
+## The story (what I actually did)
 
-1. **B:** Targeted patrol/location claim verification — **provisional pass**.
-2. **A:** Quietness tweak with trajectory under-escalation — **stop-ship**.
-3. **A2:** Stacked silence + safety — **blocked**.
-4. **A3:** Ordered mandatory-then-quiet rule — **safety repair** on the mid-shift miss class; **not yet** a complete pass (no proven quietness lift over original; ending-path concerns).
-5. Harness value: change → detect → refine → re-test, without green-washing.
+### 1. Read the bundle, then built the foundation
 
-A prompt can look better turn-by-turn while becoming less safe across a full conversation. A3 shows the same loop can repair the failure class — and that “repair” ≠ “done” until improvement *and* full-trajectory regression both clear.
+I started with the README and `prompts/PROMPTS.md`. The system has one agent. It wakes on a schedule or when a guard sends a message. Its prompt is assembled from `core/` and `instructions/`. Each shift includes anonymized events and a historical record of what the production copilot did.
+
+I first built the basic replay flow. It loads shifts, rebuilds the wake schedule, compiles prompts, and returns recorded tool data only when the tool name and input match exactly. If obligations data is missing, the harness reports it as unavailable instead of treating it as an empty list. DMs, notes, and escalations are recorded but never sent.
+
+I used Fable 5 and GPT-5.6 high to review the design and check the data. For example, shift 53658 skips turn 11, and turns cannot be assigned using array order alone. I added tests for those cases before running prompt experiments.
+
+### 2. First live runs exposed the wrong control
+
+The first runs compared a new prompt with the **historical baseline**. That comparison mixed together a prompt change and a model change, so it could not show what caused the result.
+
+I also tested **gpt-4.1-mini**. It sometimes described an action in text without calling the required tool. For example, it could say it would escalate without making the flag call. That made a run look quiet even though the model had not completed the task. I changed the experiment in two ways.
+
+1. **Live control = original prompt on the same model**, not historical production output.
+2. **Validate tool use**, not just prose. If the model doesn’t call the tools, you aren’t measuring the prompt.
+
+**Claude Opus** completed turns and tool calls successfully. **gpt-5.6-sol** was used for the main comparisons because its tool calling was more reliable and it worked well for repeated runs. The provider tests show that both adapters work. They do not show that both providers behave the same way.
+
+### 3. Goals for the two prompt edits
+
+I made two small prompt changes. Each one changed a single instruction file so the result would be easier to explain.
+
+| Variant | File changed | Intent |
+|---------|--------------|--------|
+| **B** | `guard_response.md` | Before affirming a patrol / work claim, check location (or job data). Don’t rubber-stamp. |
+| **A** (then A2, A3) | `scheduled_check_in.md` | Be quieter when nothing is owed and avoid unnecessary check-in DMs. |
+
+I defined a pass before running each edit.
+
+- **Must preserve** the welcome, replies to guard messages, and escalations when they are due.
+- **Must improve** the behavior targeted by the prompt change.
+- **Must not happen** missed escalations, a soft DM in place of escalation, or a claim that nothing is owed when data is missing.
+
+If must_not_happen failed, the variant was stop-ship / blocked even if the targeted win showed up on a few turns.
+
+### 4. Variant B passed the targeted test
+
+I selected work-claim turns on **56370** and **50737**, ran same-model Sol control vs B, and scored whether the arm called verification tools before affirming.
+
+The verification rate went from roughly 0.75 to 1.0 on one set and 0.67 to 1.0 on the other. Both versions replied to every guard message and neither added an escalation. I repeated selected turns three times and the result held.
+
+**Result** B provisionally passes the targeted test. The change worked on the selected turns. The sample is not large enough for production approval.
+
+### 5. Variant A passed some turn checks but failed the full shift
+
+Quietness was harder to test. Shift **55252** follows an escalation ladder for a silent guard. It is not a good example of when the copilot should stay quiet, but it is useful for checking safety.
+
+In the **isolated turn tests**, A preserved most escalations. On **50737 t10**, the control sent a DM in all three runs and A stayed quiet in all three runs.
+
+The **full shift** on 55252 gave a different result. The control escalated four to six times. A sent a DM or added a note on turns where the control escalated. Each of the three full-shift comparisons missed at least one important escalation in the middle of the shift. The exact turn changed between runs, but the same type of failure appeared each time.
+
+This was the main finding. **A prompt can pass an isolated turn and still be less safe over a full conversation.** Earlier messages and actions affect later decisions, so the harness needs both replay modes.
+
+I reviewed the missed turns. They still used `scheduled_check_in.md`, obligations data was unavailable, and the model chose a soft DM instead of a flag. I then followed the loop described. I changed the prompt, tested it, reviewed the regression, and revised it.
+
+### 6. A2 was blocked and A3 repaired the mid-shift issue
+
+**A2** stacked “be quiet” under a safety addendum. The missed escalation appeared in one of three runs. It also added escalations and lost the 50737 quietness result. **Blocked.**
+
+**A3** replaced the competing instructions with one ordered rule. It checks the five required conditions first. If any condition needs action, it follows the escalation ladder. It only stays quiet after those checks are clear.
+
+On 55252 ×3, A3 **cleared the missed-escalation check from t5 through t9**. Extra escalations compared with the control were earlier responses to repeated non-response. I reviewed them as necessary. The welcome also passed.
+
+Two checks still failed.
+
+- A stable quietness improvement over the original prompt (screened all labeled discretionary-DM candidates; no clean control-DM / A3-quiet 3/3).
+- A clean ending. On 2/3 full shifts, t10 and t11 softened while the control still flagged (`default.md`, path after mid-shift escalations).
+
+**Result** A3 repairs the mid-shift safety issue introduced by A. It does not pass the full quietness test.
+
+### 7. Packaging
+
+Recipes (`experiments/recipes.json`), short codes (`wl` / `cl` / `es` / `qt`), an advisor that narrates diffs but **never** overrides pass/fail, and CI on staging for pytest + dry-run.
+
+---
+
+## open questions
+
+### 1. Prompt changes change the conversation. Historical guard replies may stop making sense. How do we handle that?
+
+The historical conversation becomes less reliable after the copilot takes a different action.
+
+The harness handles that in two ways.
+
+- **Turn mode** freezes / rebuilds context from history for a selected wake. Good for cheap, isolatable decisions. Bad at catching path dependence.
+- **Shift mode** keeps the variant’s earlier DMs, notes, and escalations in the conversation. Guard events remain historical because the harness does not make up new guard replies. This is still useful for finding issues caused by earlier copilot actions.
+- A future version could branch when a new copilot message makes the next historical reply invalid. That branch could use a reviewed reply or a simulated reply. I did not build a full guard simulator for this version.
+
+Historical baseline stays a **reference lane** (what production did), not the live control.
+
+### 2. How do we measure success? How do we know the change did what we intended?
+
+Success is a set of checks, not one score.
+
+For each edit I do the following.
+
+1. Name the intended improvement (must_improve).
+2. Name what must stay true (must_preserve).
+3. Name the stop-ships (must_not_happen).
+4. Compare **same model, original prompt vs variant**, on frozen fixtures.
+5. Check **behavior and tools**. For example, did it call `get_guard_locations` and did it make the flag call?
+6. Use **reps** (×3) before calling something causal.
+7. If turn mode and shift mode disagree on safety, **shift mode wins**.
+
+An agent can look good on an output-only check while taking an unacceptable path. So I score **outcome and process** (e.g. verified before affirming; escalated instead of soft-DMing).
+
+---
+
+## Pass / fail summary
+
+| Variant | Verdict | Why |
+|---------|---------|-----|
+| **B** | Provisional targeted pass | Verify rate up on claim turns; replies held; no esc regression on the set |
+| **A** | Stop-ship | Full-shift 55252 under-escalation 3/3 |
+| **A2** | Blocked | Still missed an escalate→DM case; quieter win lost; noisier esc |
+| **A3** | Safety repair, not complete | Mid-shift miss class fixed; no stable quietness lift; ending miss 2/3 |
+
+The main takeaway is simple. **A prompt can look fine turn by turn and still be less safe across a full conversation.**
+
+---
+
+## Shifts I leaned on
+
+| Shift | Why |
+|-------|-----|
+| **56370** | Rich conversation with useful claim turns and probes |
+| **55252** | Silent guard with an escalation ladder and full-shift safety checks |
+| **50737** | Incident-heavy shift with a discretionary quietness candidate |
+| **50837** | Clear no-op scheduled turns (quietness no-regression) |
+
+---
+
+## Challenges and how I worked through them
+
+| Problem | What I did |
+|---------|-------------|
+| Historical baseline as “control” looked like A dropped escalations | Separated the reference from the live same-model control and ran it again |
+| gpt-4.1-mini narrating / weak tools | Switched causal runs to Sol (Opus for adapter proof) |
+| Empty obligations would invent “nothing owed” | Default `get_open_obligations` to unavailable, not `[]` |
+| Nearest-match fixtures could return the wrong data | Used exact `(tool, input)` matches only |
+| A looked safe on turns and unsafe on the shift | Added full-shift mode and three repetitions, then stopped A |
+| A2 still failed by stacking silence + safety | A3 replaced the section with an ordered mandatory-then-quiet rule |
+| A3 did not show a stable quietness improvement | Screened every labeled candidate and reported the result |
+| OpenAI credits ran out during the test | Paused, resumed when credits returned, and finished the screen |
+
+fable 5 and GPT-5.6 helped with design review and diagnosis. We worked through what to measure, how to label turns, and how to read the differences. Pass and fail decisions still came from deterministic checks and human review of escalations. GPT-5.6 did not decide whether its own output was better.
+
+---
+
+## What I’d do next (more time)
+
+1. Add **intervention labels** when the control and variant disagree. The reviewer could choose stay quiet, notify, or require approval, then save that decision as a regression case.
+2. Fix or clearly scope **shift-ending** (`default.md`) after mid-shift escalations. This is A3’s remaining miss.
+3. More shifts and a small **golden set** of must_preserve / must_not_happen cases in CI (offline assertions always; live recipes on demand).
+4. Cheap **fork policy** when a variant DM would invalidate the next historical guard reply.
+5. Cost/latency budgets per recipe so “run quickly and cheaply” stays true as the suite grows.
 
 ---
 
 ## Artifact index
 
-- B: `ctrl_b_*_claims`, `varb_*_claims`; `py -m harness.verify_b`
-- A groups: `ctrl_a_*`, `vara_*`; `runs/a_group_summary.json`
-- Full shift A: `ctrl_sol_55252_full[_r2|_r3]`, `vara_sol_55252_full[_r2|_r3]`
-- Full shift A2: `vara2_sol_55252_full_r{1,2,3}`; `runs/a2_score_55252.json`
-- Full shift A3: `vara3_sol_55252_full_r{1,2,3}`; `runs/a3_score_55252.json`, `runs/a3_honest_review.json`
-- Quietness probe: `*_quiet_56370_t35_*`, `probe_*`
-- Labels: `experiments/turn_sets.json`, `experiments/scheduled_turn_labels.json`
-- Diagnosis: `harness/diagnose_escalation.py` → `runs/esc_diagnosis_55252.json`
-- Variants: `variants/variant_a`, `variant_a2`, `variant_a3`, `variant_b` (each one instruction file vs baseline)
+- B files include `ctrl_b_*_claims` and `varb_*_claims`. Run `py -m harness.verify_b`.
+- A full-shift files include `ctrl_sol_55252_full[_r2|_r3]` and `vara_sol_55252_full[_r2|_r3]`.
+- A2 and A3 files include `vara2_sol_55252_full_r*` and `vara3_sol_55252_full_r*`. Scores are in `runs/a2_score_55252.json`, `runs/a3_score_55252.json`, and `runs/a3_complete_status.json`.
+- Run `harness/diagnose_escalation.py` to create `runs/esc_diagnosis_55252.json`.
+- Labels are in `experiments/turn_sets.json` and `experiments/scheduled_turn_labels.json`.
+- Variants are in `variants/variant_a`, `variant_a2`, `variant_a3`, and `variant_b`. Each changes one file from `variants/baseline`.

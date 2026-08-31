@@ -1,3 +1,28 @@
+# Calvis prompt-change eval
+
+Here is my completed take-home assessment.
+
+- My notes, results, and answers to the open questions are in [`WRITEUP.md`](WRITEUP.md).
+- Setup instructions and CLI examples are in [`HARNESS.md`](HARNESS.md).
+- The prompt variants are under [`variants/`](variants/).
+
+The harness runs the original prompt and a prompt variant against the same historical guard shifts. It then compares their decisions, tool calls, messages, escalations, and cost at either the individual-turn level or across a full shift.
+
+The short CLI is the easiest way to try it.
+
+```powershell
+py -m pip install -r requirements.txt
+py -m pytest tests -q
+.\cx
+.\cx t cl -n
+```
+
+Add the API keys listed in `HARNESS.md` when you are ready to run a live model comparison.
+
+---
+
+## Original project brief
+
 **Calvis guard copilot**
 
 Every shift runs with our AI copilot supervising it. It watches all of the data around the guard/shift as it happens (location stream, guard actions, chat messages, photos, etc) and decides whether to message the guard, what to say, how to say it, and when to escalate to a human (Calvis Overwatch). All of this behavior is currently determined by the prompt engineering we’ve done on top of the out-of-the-box LLMs.
