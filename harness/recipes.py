@@ -239,11 +239,126 @@ def _score_quietness(store: ExperimentStore, control_id: str, variant_id: str, r
     }
 
 
+import re as _re
+
+# Voice-policy violations the original prompt fails to enforce. Each is a rule
+# stated verbatim in core/comms_policy.md, so counting them is a faithful
+# compliance measure, not an invented metric.
+_EMDASH_CHARS = ("\u2014", "\u2013")  # em-dash, en-dash
+_FILLER_PATTERNS = [
+    _re.compile(r"\blet me know\b", _re.I),
+    _re.compile(r"\bfeel free\b", _re.I),
+    _re.compile(r"\bhope (?:this|that) helps\b", _re.I),
+]
+
+
+def _voice_violations(turns: list[dict]) -> dict:
+    """Count comms_policy voice violations across a run's delivered DMs."""
+    emdash = 0
+    filler = 0
+    multi_dm_turns = 0
+    dm_turns = 0
+    guard_turns = 0
+    guard_replied = 0
+    welcome_turns = 0
+    welcomed = 0
+    for t in turns:
+        msgs = t.get("messages") or []
+        if t.get("trigger") == "guard_message":
+            guard_turns += 1
+            if msgs or t.get("decision") == "send_message":
+                guard_replied += 1
+        if t.get("trigger") == "session_start":
+            welcome_turns += 1
+            if msgs:
+                welcomed += 1
+        if msgs:
+            dm_turns += 1
+            if len(msgs) > 1:
+                multi_dm_turns += 1
+        for m in msgs:
+            body = m.get("body") or m.get("message") or m.get("text") or ""
+            emdash += sum(body.count(c) for c in _EMDASH_CHARS)
+            for pat in _FILLER_PATTERNS:
+                filler += len(pat.findall(body))
+    total = emdash + filler + multi_dm_turns
+    return {
+        "emdash": emdash,
+        "filler": filler,
+        "multi_dm_turns": multi_dm_turns,
+        "total_violations": total,
+        "dm_turns": dm_turns,
+        "guard_message_turns": guard_turns,
+        "reply_rate": (guard_replied / guard_turns) if guard_turns else None,
+        "welcome_turns": welcome_turns,
+        "welcomes_sent": welcomed,
+        "escalations": sum(len(t.get("escalations") or []) for t in turns),
+    }
+
+
+def _score_voice(store: ExperimentStore, control_id: str, variant_id: str, recipe: dict) -> dict:
+    """Guardrail (no-regression) gate for a comms-voice edit.
+
+    Modern models already largely comply with the voice policy, so this is not
+    a behavioral-lift gate like verify_b. It confirms the edit (a) preserves
+    every welcome and guard reply, (b) never emits MORE voice violations than
+    the same-model control, and (c) does not perturb escalation behavior. Full
+    compliance (variant == 0 violations) and any lift over control are reported
+    as extra credit, not required for the gate.
+    """
+    shifts = sorted({j["shift"] for j in recipe["jobs"]})
+    c_turns: list[dict] = []
+    v_turns: list[dict] = []
+    for sid in shifts:
+        c_turns += store.load_turns(control_id, sid)
+        v_turns += store.load_turns(variant_id, sid)
+    cs = _voice_violations(c_turns)
+    vs = _voice_violations(v_turns)
+    lift = cs["total_violations"] - vs["total_violations"]
+
+    replies_preserved = (vs["reply_rate"] or 0) >= (cs["reply_rate"] or 0) - 1e-9
+    welcomes_preserved = vs["welcomes_sent"] >= cs["welcomes_sent"]
+    no_regression = vs["total_violations"] <= cs["total_violations"]
+    no_esc_drift = vs["escalations"] <= cs["escalations"]
+    passed = replies_preserved and welcomes_preserved and no_regression and no_esc_drift
+    full_compliance = vs["total_violations"] == 0
+
+    details = []
+    if not replies_preserved:
+        details.append(f"reply rate dropped {cs['reply_rate']}->{vs['reply_rate']}")
+    if not welcomes_preserved:
+        details.append(f"welcomes dropped {cs['welcomes_sent']}->{vs['welcomes_sent']}")
+    if not no_regression:
+        details.append(
+            f"variant added violations {cs['total_violations']}->{vs['total_violations']} "
+            f"(emdash={vs['emdash']}, filler={vs['filler']}, multi_dm={vs['multi_dm_turns']})"
+        )
+    if not no_esc_drift:
+        details.append(f"escalations rose {cs['escalations']}->{vs['escalations']}")
+    return {
+        "scorer": "voice",
+        "shifts": shifts,
+        "control": cs,
+        "variant": vs,
+        "violation_lift": lift,
+        "full_compliance": full_compliance,
+        "pass": passed,
+        "detail": (
+            f"No regression: variant {vs['total_violations']} violations vs control "
+            f"{cs['total_violations']}; welcomes+replies preserved; no escalation drift"
+            + (f"; full compliance (0 violations)." if full_compliance else ".")
+            if passed
+            else "; ".join(details)
+        ),
+    }
+
+
 SCORERS: dict[str, Callable[..., dict]] = {
     "welcome": _score_welcome,
     "verify_b": _score_verify_b,
     "escalation_focus": _score_escalation_focus,
     "quietness": _score_quietness,
+    "voice": _score_voice,
 }
 
 

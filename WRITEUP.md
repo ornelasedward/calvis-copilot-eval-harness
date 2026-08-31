@@ -104,7 +104,27 @@ Two checks still failed.
 
 ### 7. Packaging
 
-Recipes (`experiments/recipes.json`), short codes (`wl` / `cl` / `es` / `qt`), an advisor that narrates diffs but **never** overrides pass/fail, and CI on staging for pytest + dry-run.
+Recipes (`experiments/recipes.json`), short codes (`wl` / `cl` / `es` / `qt` / `vo`), an advisor that narrates diffs but **never** overrides pass/fail, and CI on staging for pytest + dry-run.
+
+### 8. Variant C — the one that actually passes clean
+
+(Last minute change I promise.)
+
+Everything above is the harness catching problems: A is stop-ship, A2 is blocked, A3 is a partial repair, B is a provisional pass. Useful, but it's all one shape — the tool saying no. I wanted to show the other shape too: a change that the tool says **yes** to, cleanly, and for the right reason.
+
+So Variant C. It changes one file, `core/comms_policy.md`, and hardens the voice rules that are already written there into a pre-send self-check: no em-dashes, no sign-off filler ("let me know," "feel free," "hope this helps"), one DM per turn. Nothing about *what* the agent decides, only *how* it reads.
+
+**What it tests for.** A deterministic `voice` scorer (recipe `c-voice`, code `vo`) counts three things across delivered DMs: em-dash / en-dash characters, banned sign-off filler, and turns that sent more than one DM. The gate is a **guardrail**, not a lift: the variant passes only if it (1) still sends every welcome, (2) still replies to every guard message, (3) emits **no more** voice violations than the same-model control, and (4) doesn't move escalations. Full compliance (zero violations) and any lift over control are reported as extra credit, not required.
+
+**Why I thought there was headroom.** The historical baseline breaks its own policy: of the 324 baseline DMs, **56 (17.3%) contain an em-dash** and **42 say "let me know."** The rule is right there in `comms_policy.md` and production still ignores it 17% of the time.
+
+**What actually happened (the honest part).** On the same-model control the headroom evaporated. gpt-5.6-sol on the *original* prompt already emitted **zero** violations on these turns, and so did Claude Opus. So Variant C passes — welcomes and replies preserved, zero violations, no escalation drift — but the **lift over control is 0**, because a strong model already complies. The 17% only shows up against the historical model, which lives in the **reference lane**, not the live control. I tried gpt-4.1-mini to force headroom; the weak control behaved erratically (skipped welcomes) and even the hardened variant slipped two filler phrases. Lesson logged: on capable models, voice is a no-regression target, not an improvement target.
+
+**How it improves the harness.** It adds a second *kind* of pass. B answers "did my improvement happen?" (a lift gate). C answers "did my change comply and break nothing?" (a no-regression gate). A real suite needs both, and C is the clean worked example of the second. It's also the best demonstration of the reference-lane / same-model-control split doing its job: the tool had every excuse to claim a 17% win and instead reported a 0 lift, because the honest comparison is against the control, not against production.
+
+**Result** Pass, as a no-regression / compliance gate. Not a behavioral lift, and the scorer says so out loud.
+
+(And yes, this writeup is full of em-dashes. The rule is for guard texts on a phone at 2am, not for me.)
 
 ---
 
@@ -148,8 +168,9 @@ An agent can look good on an output-only check while taking an unacceptable path
 | **A** | Stop-ship | Full-shift 55252 under-escalation 3/3 |
 | **A2** | Blocked | Still missed an escalate→DM case; quieter win lost; noisier esc |
 | **A3** | Safety repair, not complete | Mid-shift miss class fixed; no stable quietness lift; ending miss 2/3 |
+| **C** | Pass (no-regression) | Voice policy enforced; welcomes + replies held; 0 violations; no esc drift. Lift 0 vs modern control (already compliant); headroom only in the reference lane |
 
-The main takeaway is simple. **A prompt can look fine turn by turn and still be less safe across a full conversation.**
+The main takeaway is simple. **A prompt can look fine turn by turn and still be less safe across a full conversation.** And the other side of it: a change can pass without moving the needle, and the honest gate is the one that admits when the lift is zero.
 
 ---
 
@@ -197,5 +218,6 @@ fable 5 and GPT-5.6 helped with design review and diagnosis. We worked through w
 - A full-shift files include `ctrl_sol_55252_full[_r2|_r3]` and `vara_sol_55252_full[_r2|_r3]`.
 - A2 and A3 files include `vara2_sol_55252_full_r*` and `vara3_sol_55252_full_r*`. Scores are in `runs/a2_score_55252.json`, `runs/a3_score_55252.json`, and `runs/a3_complete_status.json`.
 - Run `harness/diagnose_escalation.py` to create `runs/esc_diagnosis_55252.json`.
+- C files include `ctrl_c_voice_*` and `var_c_voice_*`. Run `cx t vo` (scorer writes `runs/var_c_voice_*/recipe_score.json`).
 - Labels are in `experiments/turn_sets.json` and `experiments/scheduled_turn_labels.json`.
-- Variants are in `variants/variant_a`, `variant_a2`, `variant_a3`, and `variant_b`. Each changes one file from `variants/baseline`.
+- Variants are in `variants/variant_a`, `variant_a2`, `variant_a3`, `variant_b`, and `variant_c`. Each changes one file from `variants/baseline`.
