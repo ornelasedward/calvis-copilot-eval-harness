@@ -9,6 +9,8 @@ venv/
 *.html
 !harness/dashboard.py
 .cursor/
+!.cursor/
+!.cursor/environment.json
 .DS_Store
 Thumbs.db
 
