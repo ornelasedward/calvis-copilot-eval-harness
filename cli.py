@@ -518,6 +518,41 @@ def cmd_calibrate(args: argparse.Namespace) -> None:
         )
 
 
+def cmd_label(args: argparse.Namespace) -> None:
+    """Human gold labels for the advisory checklist. Never auto-filled, never a gate."""
+    from harness.label import (
+        export_worksheet,
+        format_import_summary,
+        format_status,
+        import_worksheet,
+        label_run,
+        status,
+    )
+
+    out = Path(args.out) if args.out else None
+    if args.status:
+        print(format_status(status(out=out)))
+        return
+    if args.import_path:
+        summary = import_worksheet(args.import_path, out=out, relabel=args.relabel)
+        print(format_import_summary(summary))
+        return
+    if args.export:
+        to = args.to or f"labels_{args.export}.md"
+        path = export_worksheet(args.export, to, shift=args.shift)
+        print(f"wrote worksheet {path}")
+        print("Fill the label cells (y/n/na), then: cx label --import <file>")
+        return
+    if not args.run_id:
+        sys.exit(
+            "usage: cx label <run_id> [--shift S] [--relabel]\n"
+            "       cx label --export <run_id> --to labels.md\n"
+            "       cx label --import labels.md\n"
+            "       cx label --status"
+        )
+    label_run(args.run_id, shift=args.shift, out=out, relabel=args.relabel)
+
+
 def main(argv: list[str] | None = None) -> None:
     p = argparse.ArgumentParser(prog="calvis-eval")
     sub = p.add_subparsers(dest="cmd", required=True)
@@ -673,6 +708,20 @@ def main(argv: list[str] | None = None) -> None:
     cal.add_argument("--adapter", choices=["anthropic", "openai"], default=None)
     cal.add_argument("--model", default=None)
     cal.set_defaults(func=cmd_calibrate)
+
+    lab = sub.add_parser(
+        "label",
+        help="Human gold labels for the ADVISORY conduct checklist (never a gate)",
+    )
+    lab.add_argument("run_id", nargs="?", default=None, help="Stored run to label")
+    lab.add_argument("--shift", default=None, help="Only this shift's transcript")
+    lab.add_argument("--out", default=None, help="Gold file (default experiments/gold/conduct_labels.json)")
+    lab.add_argument("--relabel", action="store_true", help="Redo transcripts already labeled")
+    lab.add_argument("--export", metavar="RUN_ID", default=None, help="Write a Markdown worksheet")
+    lab.add_argument("--to", default=None, help="Worksheet path for --export")
+    lab.add_argument("--import", dest="import_path", default=None, help="Parse a filled worksheet")
+    lab.add_argument("--status", action="store_true", help="Gold coverage vs the 20-40 target")
+    lab.set_defaults(func=cmd_label)
 
     lp = sub.add_parser(
         "loop",

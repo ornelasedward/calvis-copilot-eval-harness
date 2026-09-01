@@ -28,6 +28,7 @@ Set API keys in `.env`, then use the **short** launcher from the repo root:
 .\cx mine --dry       # failure-mode miner (sweep + gap report, no API)
 .\cx judge <run>      # ADVISORY conduct checklist (never a gate)
 .\cx judge --pair a b # ADVISORY pairwise preference
+.\cx label <run>      # human gold labels (see "Human labeling")
 .\cx calibrate        # ADVISORY judge vs gold labels
 ```
 
@@ -98,7 +99,54 @@ the compiler plan is used and the fallback is noted. `cx go -n --rank` prints bo
 plans and a diff; omitting `--rank` is compiler-only. The ranker never declares
 pass/fail. Judge model is `defaults.judge.model` in `experiments/recipes.json` and
 must differ from the copilot model. Gold labels live in
-`experiments/gold/conduct_labels.json`.
+`experiments/gold/conduct_labels.json` and are produced by humans via `cx label`
+(see **Human labeling** below).
+
+## Human labeling (`cx label`)
+
+`cx calibrate` compares the advisory judge to **human** gold labels in
+`experiments/gold/conduct_labels.json`. `cx label` is how a person produces them.
+It never calls the judge, never auto-fills an answer, and never gates pass/fail.
+
+```bash
+.\cx label <run_id> [--shift S]            # interactive: 6 questions per transcript
+.\cx label --export <run_id> --to labels.md  # Markdown worksheet to fill in an editor
+.\cx label --import labels.md              # parse the worksheet back, validated
+.\cx label --status                        # coverage vs the 20-40 transcript target
+```
+
+Interactive: prints each transcript readably (turn, guard vs copilot, tool calls,
+escalations, notes, data gaps), then asks the 6 checklist items one at a time —
+`y` / `n` / `na` / `s` to skip the item / `q` to quit — followed by an optional
+verbatim quote or note. Answers collected before a quit are still written.
+Re-running skips transcripts that already have labels; `--relabel` redoes them
+in place (rows are replaced, never duplicated). `--out` picks a different gold file.
+
+Worksheet: `--export` writes the transcript plus a table of the 6 questions with
+empty `label` cells. A reviewer fills `y` / `n` / `na` and an optional quote, then
+`--import` validates every row (unknown item id, unparsable label, missing
+transcript, rows before any heading are rejected with a reason) and prints what
+was imported, skipped as duplicate, left blank, and rejected.
+
+One transcript = one shift's `runs/<run>/results/<shift>.jsonl`, so a row's
+`transcript_path` is the alignment key and `run_id` stays `null` (a three-shift
+run is three separately keyed transcripts). Row schema — exactly what
+`harness.judge.load_gold_labels` reads, plus human-only extras it ignores:
+
+```json
+{
+  "run_id": null,
+  "transcript_path": "runs/exp_.../results/56370.jsonl",
+  "item_id": "third_ping",
+  "human_label": "yes",
+  "quote": "Third ping on this hour...",
+  "source_run_id": "exp_...", "shift_id": "56370",
+  "labeled_by": "human", "checklist_version": "v1", "labeled_at": "..."
+}
+```
+
+`--status` reports transcripts labeled per checklist item and whether the 20-40
+transcript calibration target is met. Meeting it is a data goal, not a gate.
 
 ## MVP shifts
 
