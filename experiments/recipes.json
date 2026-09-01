@@ -30,7 +30,8 @@
     "pc": "partial-compliance",
     "pb": "pushback",
     "hs": "hostile",
-    "sm": "sim-50737"
+    "sm": "sim-50737",
+    "ru": "rules-dataset"
   },
   "alias_help": {
     "wl": "welcome / smoke sanity",
@@ -42,21 +43,24 @@
     "pc": "partial-compliance persona (scripted)",
     "pb": "pushback persona (scripted)",
     "hs": "hostile persona (scripted)",
-    "sm": "shift-seeded simulated guard (50737)"
+    "sm": "shift-seeded simulated guard (50737)",
+    "ru": "conduct guidelines floor on the dataset anchors (GUIDELINES.md)"
   },
   "analyze_targets": {
     "va": "variants/variant_a",
     "v2": "variants/variant_a2",
     "v3": "variants/variant_a3",
     "vb": "variants/variant_b",
-    "vc": "variants/variant_c"
+    "vc": "variants/variant_c",
+    "vr": "variants/variant_r"
   },
   "analyze_help": {
     "va": "Variant A (quietness / stop-ship)",
     "v2": "Variant A2 (stacked safety / blocked)",
     "v3": "Variant A3 (ordered safety repair)",
     "vb": "Variant B (claim verification)",
-    "vc": "Variant C (voice compliance)"
+    "vc": "Variant C (voice compliance)",
+    "vr": "Variant R (conduct guidelines: safety-first, escalate-once, quiet-guard clock)"
   },
   "recipes": {
     "smoke-welcome": {
@@ -65,19 +69,36 @@
       "candidate_variant": "variants/variant_a3",
       "mode": "turn",
       "jobs": [
-        {"shift": "55252", "turns": [1]}
+        {
+          "shift": "55252",
+          "turns": [
+            1
+          ]
+        }
       ],
       "scorer": "welcome",
-      "suggested_when": ["any prompt change"],
+      "suggested_when": [
+        "any prompt change"
+      ],
       "card": {
-        "intent": ["smoke", "welcome"],
+        "intent": [
+          "smoke",
+          "welcome"
+        ],
         "risk_class": "smoke",
         "cost": "turn-cheap",
         "est_usd": 0.05,
-        "covers": ["welcome"],
+        "covers": [
+          "welcome"
+        ],
         "required_when": {
-          "files": ["session_start.md"],
-          "intents": ["smoke", "welcome"]
+          "files": [
+            "session_start.md"
+          ],
+          "intents": [
+            "smoke",
+            "welcome"
+          ]
         },
         "after": [],
         "on_fail": []
@@ -89,22 +110,49 @@
       "candidate_variant": "variants/variant_b",
       "mode": "turn",
       "jobs": [
-        {"shift": "56370", "turns": [9, 10, 14, 16]},
-        {"shift": "50737", "turns": [6, 12, 18]}
+        {
+          "shift": "56370",
+          "turns": [
+            9,
+            10,
+            14,
+            16
+          ]
+        },
+        {
+          "shift": "50737",
+          "turns": [
+            6,
+            12,
+            18
+          ]
+        }
       ],
       "scorer": "verify_b",
-      "suggested_when": ["guard_response.md"],
+      "suggested_when": [
+        "guard_response.md"
+      ],
       "card": {
-        "intent": ["claims"],
+        "intent": [
+          "claims"
+        ],
         "risk_class": "lift",
         "cost": "multi-turn",
         "est_usd": 0.4,
-        "covers": ["claims_verification"],
+        "covers": [
+          "claims_verification"
+        ],
         "required_when": {
-          "files": ["guard_response.md"],
-          "intents": ["claims"]
+          "files": [
+            "guard_response.md"
+          ],
+          "intents": [
+            "claims"
+          ]
         },
-        "after": ["smoke-welcome"],
+        "after": [
+          "smoke-welcome"
+        ],
         "on_fail": []
       }
     },
@@ -114,26 +162,57 @@
       "candidate_variant": "variants/variant_a3",
       "mode": "shift",
       "jobs": [
-        {"shift": "55252", "turns": null}
+        {
+          "shift": "55252",
+          "turns": null
+        }
       ],
       "scorer": "escalation_focus",
-      "scorer_args": {"focus_turns": [5, 6, 7, 8, 9]},
-      "suggested_when": ["scheduled_check_in.md"],
+      "scorer_args": {
+        "focus_turns": [
+          5,
+          6,
+          7,
+          8,
+          9
+        ]
+      },
+      "suggested_when": [
+        "scheduled_check_in.md"
+      ],
       "card": {
-        "intent": ["escalation", "safety"],
+        "intent": [
+          "escalation",
+          "safety"
+        ],
         "risk_class": "safety",
         "cost": "full-shift",
         "est_usd": 1.2,
-        "covers": ["escalation_ladder", "silent_guard"],
+        "covers": [
+          "escalation_ladder",
+          "silent_guard"
+        ],
         "required_when": {
           "files": [
-            "scheduled_check_in.md", "holding_the_post.md", "obligations.md",
-            "identity.md", "context.md", "default.md", "session_start.md",
-            "approval_decision.md", "job_event.md", "operator_message.md"
+            "scheduled_check_in.md",
+            "holding_the_post.md",
+            "obligations.md",
+            "identity.md",
+            "context.md",
+            "default.md",
+            "session_start.md",
+            "approval_decision.md",
+            "job_event.md",
+            "operator_message.md"
           ],
-          "intents": ["escalation", "safety"]
+          "intents": [
+            "escalation",
+            "safety"
+          ]
         },
-        "after": ["smoke-welcome"],
+        "after": [
+          "smoke-welcome"
+        ],
         "on_fail": []
       }
     },
@@ -143,22 +222,43 @@
       "candidate_variant": "variants/variant_a3",
       "mode": "turn",
       "jobs": [
-        {"shift": "50837", "turns": [8, 9]}
+        {
+          "shift": "50837",
+          "turns": [
+            8,
+            9
+          ]
+        }
       ],
       "scorer": "quietness",
-      "suggested_when": ["scheduled_check_in.md"],
+      "suggested_when": [
+        "scheduled_check_in.md"
+      ],
       "card": {
-        "intent": ["quietness"],
+        "intent": [
+          "quietness"
+        ],
         "risk_class": "lift",
         "cost": "turn-cheap",
         "est_usd": 0.12,
-        "covers": ["dm_rate", "nagging"],
+        "covers": [
+          "dm_rate",
+          "nagging"
+        ],
         "required_when": {
-          "files": ["scheduled_check_in.md"],
-          "intents": ["quietness"]
+          "files": [
+            "scheduled_check_in.md"
+          ],
+          "intents": [
+            "quietness"
+          ]
         },
-        "after": ["smoke-welcome"],
-        "on_fail": ["a3-shift-55252"]
+        "after": [
+          "smoke-welcome"
+        ],
+        "on_fail": [
+          "a3-shift-55252"
+        ]
       }
     },
     "c-voice": {
@@ -167,22 +267,51 @@
       "candidate_variant": "variants/variant_c",
       "mode": "turn",
       "jobs": [
-        {"shift": "56370", "turns": [1, 9, 10, 14, 16]},
-        {"shift": "50737", "turns": [1, 6, 12, 18]}
+        {
+          "shift": "56370",
+          "turns": [
+            1,
+            9,
+            10,
+            14,
+            16
+          ]
+        },
+        {
+          "shift": "50737",
+          "turns": [
+            1,
+            6,
+            12,
+            18
+          ]
+        }
       ],
       "scorer": "voice",
-      "suggested_when": ["comms_policy.md"],
+      "suggested_when": [
+        "comms_policy.md"
+      ],
       "card": {
-        "intent": ["voice"],
+        "intent": [
+          "voice"
+        ],
         "risk_class": "compliance",
         "cost": "multi-turn",
         "est_usd": 0.55,
-        "covers": ["voice_rules"],
+        "covers": [
+          "voice_rules"
+        ],
         "required_when": {
-          "files": ["comms_policy.md"],
-          "intents": ["voice"]
+          "files": [
+            "comms_policy.md"
+          ],
+          "intents": [
+            "voice"
+          ]
         },
-        "after": ["smoke-welcome"],
+        "after": [
+          "smoke-welcome"
+        ],
         "on_fail": []
       }
     },
@@ -199,18 +328,40 @@
         }
       ],
       "scorer": "photo_gamer",
-      "suggested_when": ["obligation_due.md", "guard_response.md", "tools.md"],
+      "suggested_when": [
+        "obligation_due.md",
+        "guard_response.md",
+        "tools.md"
+      ],
       "card": {
-        "intent": ["photo", "nag", "aggress"],
+        "intent": [
+          "photo",
+          "nag",
+          "aggress"
+        ],
         "risk_class": "conduct",
         "cost": "multi-turn",
         "est_usd": 1.2,
-        "covers": ["fetch_chat_image", "duplicate_photo", "ping_budget"],
+        "covers": [
+          "fetch_chat_image",
+          "duplicate_photo",
+          "ping_budget"
+        ],
         "required_when": {
-          "files": ["obligation_due.md", "guard_response.md", "tools.md"],
-          "intents": ["photo", "nag", "aggress"]
+          "files": [
+            "obligation_due.md",
+            "guard_response.md",
+            "tools.md"
+          ],
+          "intents": [
+            "photo",
+            "nag",
+            "aggress"
+          ]
         },
-        "after": ["smoke-welcome"],
+        "after": [
+          "smoke-welcome"
+        ],
         "on_fail": []
       }
     },
@@ -227,18 +378,32 @@
         }
       ],
       "scorer": "partial",
-      "suggested_when": ["obligation_due.md"],
+      "suggested_when": [
+        "obligation_due.md"
+      ],
       "card": {
-        "intent": ["photo", "proof"],
+        "intent": [
+          "photo",
+          "proof"
+        ],
         "risk_class": "conduct",
         "cost": "multi-turn",
         "est_usd": 1.0,
-        "covers": ["partial_compliance"],
+        "covers": [
+          "partial_compliance"
+        ],
         "required_when": {
-          "files": ["obligation_due.md"],
-          "intents": ["photo", "proof"]
+          "files": [
+            "obligation_due.md"
+          ],
+          "intents": [
+            "photo",
+            "proof"
+          ]
         },
-        "after": ["smoke-welcome"],
+        "after": [
+          "smoke-welcome"
+        ],
         "on_fail": []
       }
     },
@@ -255,18 +420,32 @@
         }
       ],
       "scorer": "pushback",
-      "suggested_when": ["comms_policy.md"],
+      "suggested_when": [
+        "comms_policy.md"
+      ],
       "card": {
-        "intent": ["tone", "nag"],
+        "intent": [
+          "tone",
+          "nag"
+        ],
         "risk_class": "conduct",
         "cost": "multi-turn",
         "est_usd": 1.0,
-        "covers": ["pushback_conduct"],
+        "covers": [
+          "pushback_conduct"
+        ],
         "required_when": {
-          "files": ["comms_policy.md"],
-          "intents": ["tone", "nag"]
+          "files": [
+            "comms_policy.md"
+          ],
+          "intents": [
+            "tone",
+            "nag"
+          ]
         },
-        "after": ["smoke-welcome"],
+        "after": [
+          "smoke-welcome"
+        ],
         "on_fail": []
       }
     },
@@ -283,18 +462,30 @@
         }
       ],
       "scorer": "hostile",
-      "suggested_when": ["comms_policy.md"],
+      "suggested_when": [
+        "comms_policy.md"
+      ],
       "card": {
-        "intent": ["aggress"],
+        "intent": [
+          "aggress"
+        ],
         "risk_class": "conduct",
         "cost": "multi-turn",
         "est_usd": 1.0,
-        "covers": ["hostile_conduct"],
+        "covers": [
+          "hostile_conduct"
+        ],
         "required_when": {
-          "files": ["comms_policy.md"],
-          "intents": ["aggress"]
+          "files": [
+            "comms_policy.md"
+          ],
+          "intents": [
+            "aggress"
+          ]
         },
-        "after": ["smoke-welcome"],
+        "after": [
+          "smoke-welcome"
+        ],
         "on_fail": []
       }
     },
@@ -313,10 +504,22 @@
         }
       ],
       "scorer": "simulation_conduct",
-      "scorer_args": {"asks_allowed_per_window": 2},
-      "suggested_when": ["comms_policy.md", "obligation_due.md", "guard_response.md"],
+      "scorer_args": {
+        "asks_allowed_per_window": 2
+      },
+      "suggested_when": [
+        "comms_policy.md",
+        "obligation_due.md",
+        "guard_response.md"
+      ],
       "card": {
-        "intent": ["aggress", "tone", "professional", "photo", "nag"],
+        "intent": [
+          "aggress",
+          "tone",
+          "professional",
+          "photo",
+          "nag"
+        ],
         "risk_class": "conduct",
         "cost": "multi-turn",
         "est_usd": 1.4,
@@ -327,10 +530,151 @@
           "fetch_chat_image"
         ],
         "required_when": {
-          "files": ["comms_policy.md", "obligation_due.md", "guard_response.md"],
-          "intents": ["aggress", "tone", "professional", "photo", "nag"]
+          "files": [
+            "comms_policy.md",
+            "obligation_due.md",
+            "guard_response.md"
+          ],
+          "intents": [
+            "aggress",
+            "tone",
+            "professional",
+            "photo",
+            "nag"
+          ]
         },
-        "after": ["smoke-welcome"],
+        "after": [
+          "smoke-welcome"
+        ],
+        "on_fail": []
+      }
+    },
+    "rules-dataset": {
+      "description": "Conduct floor (GUIDELINES.md) on the dataset-anchored scenario turns: control vs variant_r.",
+      "control_variant": "variants/baseline",
+      "candidate_variant": "variants/variant_r",
+      "mode": "turn",
+      "jobs": [
+        {
+          "shift": "46116",
+          "turns": [
+            96,
+            98,
+            105
+          ]
+        },
+        {
+          "shift": "50340",
+          "turns": [
+            19
+          ]
+        },
+        {
+          "shift": "50737",
+          "turns": [
+            6,
+            13,
+            18,
+            23,
+            28,
+            30,
+            32,
+            38,
+            39
+          ]
+        },
+        {
+          "shift": "53658",
+          "turns": [
+            2,
+            7,
+            9,
+            12
+          ]
+        },
+        {
+          "shift": "55252",
+          "turns": [
+            3,
+            4,
+            6,
+            8,
+            9,
+            10
+          ]
+        },
+        {
+          "shift": "56370",
+          "turns": [
+            10,
+            11,
+            14
+          ]
+        },
+        {
+          "shift": "58349",
+          "turns": [
+            18,
+            57,
+            70,
+            71,
+            76,
+            77,
+            79,
+            84
+          ]
+        }
+      ],
+      "scorer": "conduct_floor",
+      "suggested_when": [
+        "tools.md",
+        "holding_the_post.md",
+        "comms_policy.md",
+        "obligations.md",
+        "guard_response.md",
+        "scheduled_check_in.md"
+      ],
+      "card": {
+        "intent": [
+          "conduct",
+          "aggress",
+          "tone",
+          "emergency",
+          "escalation",
+          "professional"
+        ],
+        "risk_class": "conduct",
+        "cost": "multi-turn",
+        "est_usd": 2.5,
+        "covers": [
+          "conduct_floor",
+          "emergency",
+          "walkoff",
+          "silent_guard",
+          "verdict_language",
+          "reescalation"
+        ],
+        "required_when": {
+          "files": [
+            "tools.md",
+            "holding_the_post.md",
+            "comms_policy.md",
+            "obligations.md",
+            "guard_response.md",
+            "scheduled_check_in.md"
+          ],
+          "intents": [
+            "conduct",
+            "aggress",
+            "tone",
+            "emergency",
+            "escalation",
+            "professional"
+          ]
+        },
+        "after": [
+          "smoke-welcome"
+        ],
         "on_fail": []
       }
     }

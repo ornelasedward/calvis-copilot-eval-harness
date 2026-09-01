@@ -35,6 +35,10 @@ FIXTURE_ROOT = ROOT / "tests" / "fixtures" / "agent_eval"
 FIXTURE_CONTROL_RUN = "ctrl_loop_dry"
 FIXTURE_VARIANT_RUN = "var_loop_dry"
 
+# Second holdout, same semantics as a3-shift-55252: the conduct floor from
+# GUIDELINES.md. A floor break -> holdout_pass False -> revert (LOOP.md).
+CONDUCT_HOLDOUT_RECIPE = "rules-dataset"
+
 
 # --------------------------------------------------------------------------
 # turn selection
@@ -137,6 +141,29 @@ def preserve_verdict(
     }
 
 
+def combine_holdouts(results: list[dict[str, Any] | None]) -> dict[str, Any] | None:
+    """AND two holdouts into the one `holdout_pass` the ScoreCard carries.
+
+    A holdout that could not run contributes `None` and neither passes nor
+    fails the keep; any holdout that ran and failed fails the keep.
+    """
+    rows = [r for r in results if r]
+    if not rows:
+        return None
+    ran = [r for r in rows if r.get("pass") is not None]
+    combined: bool | None = all(bool(r["pass"]) for r in ran) if ran else None
+    return {
+        "recipe": ", ".join(str(r.get("recipe") or "?") for r in rows),
+        "pass": combined,
+        "detail": "; ".join(
+            f"{r.get('recipe')}: {r.get('pass')}"
+            + (f" ({r.get('detail')})" if r.get("detail") else "")
+            for r in rows
+        ),
+        "results": rows,
+    }
+
+
 def run_targeted_scorer(
     scorer_name: str | None,
     store: ExperimentStore,
@@ -191,6 +218,7 @@ def build_scorecard(
     variant_run_id: str,
     preserve_extra: tuple[list[dict[str, Any]], list[dict[str, Any]]] | None = None,
     extra_metrics: dict[str, Any] | None = None,
+    holdouts: list[dict[str, Any]] | None = None,
 ) -> ScoreCard:
     """Assemble the ScoreCard. Every boolean traces to a deterministic check."""
     spec = diagnosis.spec
@@ -211,9 +239,12 @@ def build_scorecard(
         v_preserve = v_preserve + list(preserve_extra[1])
     preserve = preserve_verdict(c_preserve, v_preserve)
 
+    # Every holdout that ran must pass; one that could not run stays None.
+    all_holdouts = list(holdouts) if holdouts is not None else ([holdout] if holdout else [])
+    combined = combine_holdouts(all_holdouts)
     holdout_pass: bool | None = None
-    if holdout is not None and holdout.get("pass") is not None:
-        holdout_pass = bool(holdout["pass"])
+    if combined is not None and combined.get("pass") is not None:
+        holdout_pass = bool(combined["pass"])
 
     gates = {
         "control": clause_gates(control_rows, spec),
@@ -235,6 +266,7 @@ def build_scorecard(
         "preserve": preserve,
         "targeted_scorer": scorer_result,
         "holdout": holdout,
+        "holdouts": all_holdouts,
         "spec": spec.to_dict(),
         "not_outcomes": list(spec.not_outcomes),
     }
@@ -274,6 +306,7 @@ def evaluate_from_fixture(
     control_run_id: str = FIXTURE_CONTROL_RUN,
     variant_run_id: str = FIXTURE_VARIANT_RUN,
     recipes_path: Path | None = None,
+    include_conduct_holdout: bool = True,
 ) -> ScoreCard:
     """dry_run path: score stored runs. No adapter, no model, no network."""
     root = Path(fixture_root or FIXTURE_ROOT)
@@ -314,16 +347,30 @@ def evaluate_from_fixture(
 
     holdout: dict[str, Any] | None = None
     preserve_extra = None
+    holdouts: list[dict[str, Any] | None] = []
     if diagnosis.holdout_recipe:
-        holdout, preserve_extra = _fixture_holdout(
+        a3, preserve_extra = _fixture_holdout(
             diagnosis.holdout_recipe,
             store,
             control_run_id,
             variant_run_id,
             recipes_path,
         )
+        holdouts.append(a3)
     else:
         notes.append("holdout_pass is None: this card IS the holdout shift")
+    if include_conduct_holdout:
+        # dry_run stays API-free: the anchor shifts are not in the stored
+        # fixture, so the conduct holdout is reported as not-run, never as pass.
+        holdouts.append(
+            {
+                "recipe": CONDUCT_HOLDOUT_RECIPE,
+                "pass": None,
+                "detail": "dry_run: conduct holdout not run (no stored fixture for the anchor shifts)",
+            }
+        )
+        notes.append(f"{CONDUCT_HOLDOUT_RECIPE}: not run in dry mode (API-free)")
+    holdout = next((h for h in holdouts if h), None)
 
     return build_scorecard(
         diagnosis,
@@ -331,6 +378,7 @@ def evaluate_from_fixture(
         variant_rows=variant_rows,
         scorer_result=scorer_result,
         holdout=holdout,
+        holdouts=[h for h in holdouts if h],
         control_run_id=control_run_id,
         variant_run_id=variant_run_id,
         preserve_extra=preserve_extra,
@@ -416,12 +464,18 @@ def evaluate_diagnosis(
     root: Path | None = None,
     recipes_path: Path | None = None,
     fixture_root: Path | None = None,
+    include_conduct_holdout: bool = True,
 ) -> ScoreCard:
     """Control (parent prompt) vs patched variant, same model, same frozen turns.
 
     Returns a ScoreCard whose booleans come from deterministic scorers and
     ProcessSpec clause checks only. `dry_run=True` scores stored fixture runs
     and makes zero API calls.
+
+    Two holdouts run before a keep: `a3-shift-55252` (safety) and
+    `rules-dataset` (the conduct floor, GUIDELINES.md). Either failing sets
+    `holdout_pass` False, which `policy.decide` turns into a revert.
+    `include_conduct_holdout=False` skips the second one (tests).
     """
     if dry_run:
         return evaluate_from_fixture(
@@ -431,6 +485,7 @@ def evaluate_diagnosis(
             turns=turns,
             fixture_root=fixture_root,
             recipes_path=recipes_path,
+            include_conduct_holdout=include_conduct_holdout,
         )
 
     root = Path(root or ROOT)
@@ -489,10 +544,12 @@ def evaluate_diagnosis(
     holdout: dict[str, Any] | None = None
     preserve_extra = None
     notes: list[str] = []
-    if diagnosis.holdout_recipe:
+    holdouts: list[dict[str, Any] | None] = []
+
+    def _run_holdout(name: str) -> tuple[dict[str, Any], list[dict], list[dict]]:
         # LOOP hard rule 6: the holdout runs even when the card is unrelated.
-        holdout_result = execute_recipe(
-            diagnosis.holdout_recipe,
+        result = execute_recipe(
+            name,
             run_jobs_fn=run_jobs_fn,
             root=root,
             adapter=adapter,
@@ -501,27 +558,37 @@ def evaluate_diagnosis(
             control_variant=control_dir,
             recipes_path=recipes_path,
         )
-        plan = holdout_result.get("plan") or {}
-        holdout = {
-            "recipe": plan.get("recipe", diagnosis.holdout_recipe),
-            "pass": holdout_result.get("pass"),
+        plan = result.get("plan") or {}
+        row = {
+            "recipe": plan.get("recipe", name),
+            "pass": result.get("pass"),
             "scorer": plan.get("scorer"),
             "control_run_id": plan.get("control_run_id"),
             "variant_run_id": plan.get("variant_run_id"),
-            "detail": (holdout_result.get("score") or {}).get("detail"),
+            "detail": (result.get("score") or {}).get("detail"),
         }
+        c: list[dict] = []
+        v: list[dict] = []
+        for s in [str(j.get("shift")) for j in (plan.get("jobs") or [])]:
+            c += store.load_turns(plan.get("control_run_id") or "", s)
+            v += store.load_turns(plan.get("variant_run_id") or "", s)
+        return row, c, v
+
+    if diagnosis.holdout_recipe:
+        row, c_rows, v_rows = _run_holdout(diagnosis.holdout_recipe)
+        holdouts.append(row)
         # The holdout is a full shift: reuse it as must_preserve evidence
         # (welcome + guard replies) instead of paying for a third run.
-        h_shifts = [str(j.get("shift")) for j in (plan.get("jobs") or [])]
-        c_rows: list[dict] = []
-        v_rows: list[dict] = []
-        for s in h_shifts:
-            c_rows += store.load_turns(plan.get("control_run_id") or "", s)
-            v_rows += store.load_turns(plan.get("variant_run_id") or "", s)
         if c_rows or v_rows:
             preserve_extra = (c_rows, v_rows)
     else:
         notes.append("holdout_pass is None: this card IS the holdout shift")
+
+    if include_conduct_holdout and diagnosis.holdout_recipe != CONDUCT_HOLDOUT_RECIPE:
+        row, _c, _v = _run_holdout(CONDUCT_HOLDOUT_RECIPE)
+        holdouts.append(row)
+
+    holdout = next((h for h in holdouts if h), None)
 
     return build_scorecard(
         diagnosis,
@@ -529,6 +596,7 @@ def evaluate_diagnosis(
         variant_rows=variant_rows,
         scorer_result=scorer_result,
         holdout=holdout,
+        holdouts=[h for h in holdouts if h],
         control_run_id=control_run_id,
         variant_run_id=variant_run_id,
         preserve_extra=preserve_extra,

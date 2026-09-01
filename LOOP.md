@@ -24,6 +24,8 @@ This file is the contract for delegated build sessions. Implement against
    escalation/coverage miss, still run `a3-shift-55252` (or the catalog
    holdout) before keep.
 7. **Cap iterations** (`max_iterations`, default 3). No unbounded self-play.
+8. **Conduct floor (GUIDELINES.md) is a holdout; a floor break is a revert.**
+   `rules-dataset` runs alongside `a3-shift-55252` before every keep.
 
 ## What improvement means (static JSON)
 

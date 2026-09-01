@@ -462,8 +462,21 @@ def _score_simulation_conduct(
     return score_simulation_run(store, control_id, variant_id, recipe)
 
 
+def _score_conduct_floor(
+    store: ExperimentStore, control_id: str, variant_id: str, recipe: dict
+) -> dict:
+    """Conduct floor from GUIDELINES.md / experiments/guidelines.json.
+
+    Deterministic, and reads nothing later than each turn's timestamp.
+    """
+    from harness.guidelines import score_conduct_floor
+
+    return score_conduct_floor(store, control_id, variant_id, recipe)
+
+
 SCORERS: dict[str, Callable[..., dict]] = {
     "welcome": _score_welcome,
+    "conduct_floor": _score_conduct_floor,
     "verify_b": _score_verify_b,
     "escalation_focus": _score_escalation_focus,
     "quietness": _score_quietness,
@@ -589,6 +602,16 @@ def execute_recipe(
     # Historical recipes: --dry prints the plan and stops. Scenario and
     # simulation recipes still run, against a canned copilot (and a canned
     # guard), so the whole path is exercised with zero API calls.
+    if dry_run and recipe.get("scorer") == "conduct_floor":
+        # The conduct ruleset is pure code: exercise the detectors + floor over
+        # the BASELINE (production) turns of the anchor shifts. Zero API calls.
+        from harness.guidelines import baseline_report, format_baseline_table
+
+        report = baseline_report(jobs)
+        print(format_baseline_table(report))
+        plan["dry_mode"] = "baseline_conduct_floor"
+        return {"plan": plan, "score": None, "pass": None, "baseline_report": report}
+
     if dry_run and mode not in ("scenario", "simulation"):
         return {"plan": plan, "score": None, "pass": None}
 

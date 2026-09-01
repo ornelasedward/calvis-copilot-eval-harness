@@ -556,6 +556,7 @@ def cmd_judge(args: argparse.Namespace) -> None:
         shift=args.shift,
         adapter=args.adapter,
         model=args.model,
+        scenario_items_path=args.scenario_items,
     )
     print(format_advisory_dashboard(out))
     print(f"wrote {out['wrote']}")
@@ -777,6 +778,16 @@ def main(argv: list[str] | None = None) -> None:
     j.add_argument("--shift", default=None)
     j.add_argument("--adapter", choices=["anthropic", "openai"], default=None)
     j.add_argument("--model", default=None, help="Override judge.model (must differ from copilot)")
+    j.add_argument(
+        "--scenario-items",
+        dest="scenario_items",
+        default=None,
+        help=(
+            "ADVISORY scenario questions (GUIDELINES.md) to ask on top of the 6: a "
+            "recipe_score.json or a bare judgment_items list. Auto-detected from the "
+            "run's own recipe_score.json when omitted."
+        ),
+    )
     j.set_defaults(func=cmd_judge)
 
     cal = sub.add_parser(

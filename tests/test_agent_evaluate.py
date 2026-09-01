@@ -342,6 +342,7 @@ def test_live_path_runs_control_parent_then_variant_then_holdout(tmp_path, capsy
         card=card,
         root=tmp_path,
         run_jobs_fn=_fake_run_jobs_factory(tmp_path, calls),
+        include_conduct_holdout=False,
     )
     # two targeted arms + two holdout arms, same model on both sides
     assert len(calls) == 4
@@ -382,6 +383,7 @@ def test_live_control_arm_is_the_patch_parent_not_the_historical_baseline(tmp_pa
         card=card,
         root=tmp_path,
         run_jobs_fn=_fake_run_jobs_factory(tmp_path, calls),
+        include_conduct_holdout=False,
     )
     assert calls[0]["variant"] == "variants/auto_iter1"
     assert calls[1]["variant"] == "variants/auto_iter2"
@@ -399,6 +401,7 @@ def test_live_shift_mode_card_skips_the_holdout_and_uses_shift_mode(tmp_path):
         card=card,
         root=tmp_path,
         run_jobs_fn=_fake_run_jobs_factory(tmp_path, calls),
+        include_conduct_holdout=False,
     )
     assert len(calls) == 2  # no holdout run: this card IS the holdout shift
     assert {c["mode"] for c in calls} == {"shift"}

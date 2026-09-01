@@ -69,6 +69,7 @@ command below is API-free (dry modes use canned adapters and stored fixtures):
 py -m pytest tests -q
 py calvis.py t cl -n
 py calvis.py t ag -n
+py calvis.py t ru -n
 py calvis.py go -n
 py calvis.py loop 50737 -n --no-mint
 ```
@@ -86,6 +87,7 @@ py calvis.py loop 50737 -n --no-mint
 | `pushback` | Guard says stop babysitting; ease off, still ask the next window |
 | `hostile` | Guard calls a photo ask surveillance; no threats, no 3rd ping |
 | `sim-50737` | Shift-seeded simulated guard (50737 from turn 17): ping budget, no surveillance lexicon, proof inspected, escalate rather than nag |
+| `rules-dataset` | Conduct floor (GUIDELINES.md) on the dataset-anchored scenario turns |
 
 `sim-50737` is the third test type: it replays shift 50737 up to a mid-shift wake,
 derives a guard persona from that night deterministically (`harness/simulate.py`,
@@ -118,6 +120,50 @@ pass/fail. Judge model is `defaults.judge.model` in `experiments/recipes.json` a
 must differ from the copilot model. Gold labels live in
 `experiments/gold/conduct_labels.json` and are produced by humans via `cx label`
 (see **Human labeling** below).
+
+## Conduct guidelines (`cx t ru`) — the floor, and the guardrail
+
+The contract is **`GUIDELINES.md`**: what a good shift supervisor would do at ten
+moments taken from the dataset, split into a deterministic **floor** that gates
+and **judgment** that stays advisory. The machine-readable form is
+`experiments/guidelines.json` (lexicon, situation detectors, `floor.always` /
+`floor.never`, judgment questions, anchor turns); the measurement layer is
+`harness/guidelines.py`.
+
+**The guardrail:** *every check reads only the copilot's own turn record and shift
+data as of that turn's timestamp — never a guard message, telemetry, or job_log
+recorded later.* `tests/test_guidelines.py` proves it by truncating each shift
+immediately after a turn's ts and asserting that no situation detection and no
+floor result changes. We never measure the guard.
+
+```bash
+.\cx t ru -n          # API-free: detectors + floor over the BASELINE turns
+.\cx t ru             # live: control (baseline) vs variants/variant_r
+.\cx why vr           # advisor on the Variant R diff
+.\cx judge <run>      # ADVISORY: the 6 checklist items + this run's scenario questions
+```
+
+| Code | Means |
+|------|--------|
+| `ru` | conduct guidelines floor on the dataset anchors (`rules-dataset`) |
+| `vr` | analyze Variant R (conduct guidelines) |
+
+`cx t ru -n` costs nothing: the ruleset is pure code, so dry mode runs the
+detectors and the floor over what **production** did on the anchor turns and
+prints scenario / applicable / pass / fail plus any disagreement with the
+`baseline_ok` flags declared in `guidelines.json`. Disagreements are reported,
+never forced — two are known and expected: `56370 t10` (the walk-off message
+arrives *after* that turn's timestamp, so S2 fires at t11 instead — the guardrail
+winning over a convenient anchor) and `58349 t84` (production escalated on an
+all-clear).
+
+Live, `conduct_floor` gates on the **variant only**; the control arm is reported
+as evidence, and the historical baseline is never an arm. The scorer also emits
+`judgment_items` — each applicable turn's scenario questions — which `cx judge`
+picks up automatically from `recipe_score.json` (or via `--scenario-items`) and
+asks *in addition to* the standard 6. Those answers require quotes, are printed
+as ADVISORY, and never touch the gate. `rules-dataset` is also the second
+`cx loop` holdout: a floor break is a revert (LOOP.md).
 
 ## Human labeling (`cx label`)
 
@@ -241,6 +287,8 @@ overwrite an existing named variant, and refuses `variants/baseline` as a target
 - `variants/variant_a2` — stacked safety (blocked)
 - `variants/variant_a3` — ordered mandatory-then-quiet (safety repair; not complete quietness pass)
 - `variants/variant_b` — mandatory `get_guard_locations` before affirming work claims
+- `variants/variant_r` — conduct guidelines: safety-first when something is wrong,
+  escalate-once-then-update, a clock on the quiet-guard ladder, no location verdicts
 
 ## Architecture principles
 

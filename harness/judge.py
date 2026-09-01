@@ -511,6 +511,106 @@ def _checklist_user_prompt(transcript: str) -> str:
     )
 
 
+def scenario_items_from_run(
+    run_dir: Path,
+) -> list[dict[str, Any]]:
+    """Scenario judgment questions attached to a run by the conduct_floor scorer.
+
+    `recipe_score.json` carries `score.judgment_items` = one row per applicable
+    turn ({shift, turn, scenario, name, questions}). Absent file -> [].
+    """
+    path = Path(run_dir) / "recipe_score.json"
+    if not path.exists():
+        return []
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (ValueError, OSError):
+        return []
+    items = ((data.get("score") or {}).get("judgment_items")) or []
+    return [i for i in items if isinstance(i, dict) and i.get("questions")]
+
+
+def load_scenario_items(path: str | Path) -> list[dict[str, Any]]:
+    """Read `--scenario-items` (a recipe_score.json, or a bare items list)."""
+    p = Path(path)
+    data = json.loads(p.read_text(encoding="utf-8"))
+    if isinstance(data, list):
+        return [i for i in data if isinstance(i, dict) and i.get("questions")]
+    if isinstance(data, dict):
+        items = ((data.get("score") or {}).get("judgment_items")) or data.get("judgment_items") or []
+        return [i for i in items if isinstance(i, dict) and i.get("questions")]
+    return []
+
+
+def scenario_item_id(item: dict, q_index: int) -> str:
+    return f"{item.get('scenario')}_{item.get('shift')}_t{item.get('turn')}_q{q_index + 1}"
+
+
+def _scenario_user_prompt(transcript: str, items: list[dict]) -> str:
+    lines = []
+    for item in items:
+        for qi, q in enumerate(item.get("questions") or []):
+            lines.append(
+                f"id={scenario_item_id(item, qi)}  "
+                f"[{item.get('scenario')} {item.get('name')} — shift {item.get('shift')} "
+                f"turn {item.get('turn')}]  {q}"
+            )
+    return (
+        "Answer these SCENARIO questions about the FULL transcript.\n"
+        "Each: verdict yes|no|n_a and a verbatim quote from the transcript (empty if n_a).\n"
+        'JSON shape: {"items": [{"id": "...", "verdict": "yes|no|n_a", "quote": "..."}]}\n\n'
+        f"QUESTIONS:\n" + "\n".join(lines) + f"\n\nTRANSCRIPT:\n{transcript[:24000]}\n"
+    )
+
+
+def judge_scenario_items(
+    transcript: str,
+    items: list[dict],
+    *,
+    complete_fn: CompleteFn | None = None,
+    adapter: str = "openai",
+    model: str = "gpt-5.6-luna",
+    copilot_model: str | None = None,
+) -> dict[str, Any]:
+    """ADVISORY: the scenario's judgment questions for the applicable turns.
+
+    Additive to the standard 6-item checklist; quotes required; never gates.
+    """
+    assert_models_differ(model, copilot_model)
+    if not items:
+        return {"advisory": True, "does_not_gate": True, "items": [], "scenario_items": 0}
+    fn = complete_fn or (
+        lambda system, user: _llm_complete(system, user, adapter=adapter, model=model)
+    )
+    payload = parse_json_object(fn(JUDGE_SYSTEM, _scenario_user_prompt(transcript, items)))
+    raw = {str(r.get("id")): r for r in (payload.get("items") or []) if isinstance(r, dict)}
+    out: list[dict[str, Any]] = []
+    for item in items:
+        for qi, q in enumerate(item.get("questions") or []):
+            iid = scenario_item_id(item, qi)
+            row = raw.get(iid) or {}
+            verdict = normalize_verdict(row.get("verdict"))
+            quote = "" if verdict == "n_a" else str(row.get("quote") or "")
+            out.append(
+                {
+                    "id": iid,
+                    "scenario": item.get("scenario"),
+                    "shift": item.get("shift"),
+                    "turn": item.get("turn"),
+                    "text": q,
+                    "verdict": verdict,
+                    "quote": quote,
+                    "must_not_happen": False,
+                }
+            )
+    return {
+        "advisory": True,
+        "does_not_gate": True,
+        "scenario_items": len(out),
+        "items": out,
+    }
+
+
 def judge_transcript(
     transcript: str,
     *,
@@ -518,6 +618,7 @@ def judge_transcript(
     adapter: str = "openai",
     model: str = "gpt-5.6-luna",
     copilot_model: str | None = None,
+    scenario_items: list[dict] | None = None,
 ) -> dict[str, Any]:
     assert_models_differ(model, copilot_model)
     fn = complete_fn or (
@@ -529,6 +630,16 @@ def judge_transcript(
     result["judge_model"] = model
     result["judge_adapter"] = adapter
     result["copilot_model"] = copilot_model
+    if scenario_items:
+        # Additive and advisory: scenario questions never touch must_not_happen.
+        result["scenario"] = judge_scenario_items(
+            transcript,
+            scenario_items,
+            complete_fn=complete_fn,
+            adapter=adapter,
+            model=model,
+            copilot_model=copilot_model,
+        )
     return result
 
 
@@ -576,6 +687,14 @@ def format_advisory_dashboard(result: dict, *, title: str | None = None) -> str:
         lines.append(
             f"ADVISORY  {num}. {item.get('id'):<24} {mark:<12}{q}"
         )
+    scenario = result.get("scenario") or {}
+    for item in scenario.get("items") or []:
+        quote = item.get("quote") or ""
+        q = f'  "{quote}"' if quote else ""
+        lines.append(
+            f"ADVISORY  scenario {item.get('id'):<28} {str(item.get('verdict')):<6}"
+            f"  {str(item.get('text'))[:70]}{q}"
+        )
     if result.get("agreement"):
         winner = result.get("winner")
         extra = f"  winner={winner}" if winner else ""
@@ -622,6 +741,7 @@ def run_checklist_on_run(
     complete_fn: CompleteFn | None = None,
     root: Path | None = None,
     recipes_path: Path | None = None,
+    scenario_items_path: str | Path | None = None,
 ) -> dict[str, Any]:
     root = root or ROOT
     cfg = judge_defaults(recipes_path)
@@ -629,12 +749,19 @@ def run_checklist_on_run(
     model = model or cfg["model"]
     store = ExperimentStore(root / "runs")
     loaded = load_transcript(run_id=run_id, shift=shift, store=store, root=root)
+    # --scenario-items, else auto-detect from the run's recipe_score.json.
+    items = (
+        load_scenario_items(scenario_items_path)
+        if scenario_items_path
+        else scenario_items_from_run(store.run_dir(run_id))
+    )
     result = judge_transcript(
         loaded["text"],
         complete_fn=complete_fn,
         adapter=adapter,
         model=model,
         copilot_model=loaded.get("copilot_model"),
+        scenario_items=items,
     )
     result["run_id"] = run_id
     result["transcript_source"] = loaded["source"]
