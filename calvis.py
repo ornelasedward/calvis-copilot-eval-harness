@@ -40,7 +40,7 @@ def _help() -> None:
   cx judge --pair <a> <b>    ADVISORY pairwise preference
   cx calibrate               ADVISORY judge vs gold labels
 
-  Test codes:   wl=welcome  cl=claims  es=escalation  qt=quietness  vo=voice
+  Test codes:   wl=welcome  cl=claims  es=escalation  qt=quietness  vo=voice  ag=photo-gamer
   Why codes:    va=A  v2=A2  v3=A3  vb=B  vc=C
 
 Examples:
@@ -76,7 +76,7 @@ def main(argv: list[str] | None = None) -> None:
 
     if cmd in ("t", "test"):
         if not rest:
-            sys.exit("usage: calvis t <wl|cl|es|qt> [-n]")
+            sys.exit("usage: calvis t <wl|cl|es|qt|ag> [-n]")
         recipe = rest[0]
         dry = "-n" in rest or "--dry-run" in rest
         from cli import cmd_test
@@ -89,7 +89,7 @@ def main(argv: list[str] | None = None) -> None:
                 model=None,
                 variant=None,
                 control=None,
-                repeat=1,
+                repeat=None,
                 dry_run=dry,
             )
         )

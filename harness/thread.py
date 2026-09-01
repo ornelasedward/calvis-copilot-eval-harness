@@ -29,6 +29,8 @@ class ChatMessage:
     role: Role
     text: str
     image: str | None = None
+    image_url: str | None = None
+    image_meta: dict | None = None
 
 
 def _paired_copilot_messages(shift: Shift) -> list[ChatMessage]:
@@ -64,6 +66,8 @@ def _guard_messages(shift: Shift) -> list[ChatMessage]:
             role="guard",
             text=e.data.get("text") or "",
             image=e.data.get("image"),
+            image_url=e.data.get("image_url") or e.data.get("imageUrl"),
+            image_meta=e.data.get("image_meta") or e.data.get("imageMeta"),
         )
         for e in shift.events.as_of(
             # Use a far-future cutoff; callers filter with `as_of`.
@@ -87,6 +91,27 @@ class ThreadManager:
 
     def record_variant_message(self, ts: datetime, text: str) -> None:
         self._variant_copilot.append(ChatMessage(ts=ts, role="copilot", text=text))
+
+    def record_guard_message(
+        self,
+        ts: datetime,
+        text: str,
+        *,
+        image: str | None = None,
+        image_url: str | None = None,
+        image_meta: dict | None = None,
+    ) -> None:
+        """Inject a live (scripted) guard message into shift-mode history."""
+        self._guard.append(
+            ChatMessage(
+                ts=ts,
+                role="guard",
+                text=text or "",
+                image=image,
+                image_url=image_url,
+                image_meta=image_meta,
+            )
+        )
 
     def history_as_of(
         self,
@@ -122,8 +147,11 @@ class ThreadManager:
         out = []
         for m in self.history_as_of(as_of, mode=mode):
             content = m.text
-            if m.image:
-                content = (content + "\n[photo]").strip() if content else "[photo]"
+            if m.image or m.image_url:
+                photo = "[photo]"
+                if m.image_url:
+                    photo = f"[photo]\nimage_url: {m.image_url}"
+                content = (content + "\n" + photo).strip() if content else photo
             role = "user" if m.role == "guard" else "assistant"
             out.append({"role": role, "content": content})
         return out

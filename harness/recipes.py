@@ -353,12 +353,22 @@ def _score_voice(store: ExperimentStore, control_id: str, variant_id: str, recip
     }
 
 
+def _score_photo_gamer(
+    store: ExperimentStore, control_id: str, variant_id: str, recipe: dict
+) -> dict:
+    """Process gates on a scripted photo-gamer trajectory. Aggregated pass^k."""
+    from harness.scenario import score_photo_gamer_run
+
+    return score_photo_gamer_run(store, control_id, variant_id, recipe)
+
+
 SCORERS: dict[str, Callable[..., dict]] = {
     "welcome": _score_welcome,
     "verify_b": _score_verify_b,
     "escalation_focus": _score_escalation_focus,
     "quietness": _score_quietness,
     "voice": _score_voice,
+    "photo_gamer": _score_photo_gamer,
 }
 
 
@@ -371,7 +381,7 @@ def execute_recipe(
     model: str | None = None,
     candidate_variant: str | None = None,
     control_variant: str | None = None,
-    repeat: int = 1,
+    repeat: int | None = None,
     dry_run: bool = False,
     recipes_path: Path | None = None,
 ) -> dict[str, Any]:
@@ -393,6 +403,8 @@ def execute_recipe(
     candidate_variant = candidate_variant or recipe.get("candidate_variant")
     mode = recipe.get("mode") or "turn"
     jobs = recipe.get("jobs") or []
+    if repeat is None:
+        repeat = int(recipe.get("repetitions") or 1)
     stamp = _stamp()
     control_id = f"ctrl_{name.replace('-', '_')}_{stamp}"
     variant_id = f"var_{name.replace('-', '_')}_{stamp}"
@@ -409,10 +421,31 @@ def execute_recipe(
         "variant_run_id": variant_id,
         "jobs": jobs,
         "scorer": recipe.get("scorer"),
+        "repetitions": repeat,
         "dry_run": dry_run,
     }
-    if dry_run:
+    # Historical recipes: --dry prints the plan and stops. Scenario recipes
+    # still run, against a canned copilot, so the scripted guard is exercised
+    # with zero API calls.
+    if dry_run and mode != "scenario":
         return {"plan": plan, "score": None, "pass": None}
+
+    if mode == "scenario":
+        from harness.scenario import execute_scenario_recipe
+
+        return execute_scenario_recipe(
+            name=name,
+            recipe=recipe,
+            plan=plan,
+            variant_id=variant_id,
+            control_id=control_id,
+            root=root,
+            adapter=adapter,
+            model=model,
+            candidate_variant=candidate_variant,
+            dry_run=dry_run,
+            repeat=repeat,
+        )
 
     store = ExperimentStore(root / "runs")
     print(f"=== recipe {name}: control ({control_variant}) -> {control_id} ===")
