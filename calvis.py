@@ -45,6 +45,10 @@ def _help() -> None:
   cx mine [--dry] [--limit N]  mine shifts/runs for uncovered failure modes
   cx judge <run>             ADVISORY conduct checklist (never a gate)
   cx judge --pair <a> <b>    ADVISORY pairwise preference
+  cx label <run>             human gold labels (interactive, 6 questions)
+  cx label --export <run> --to f.md   Markdown worksheet to fill offline
+  cx label --import f.md     parse a filled worksheet into the gold file
+  cx label --status          gold coverage vs the 20-40 transcript target
   cx calibrate               ADVISORY judge vs gold labels
   cx loop <shift> [-n]       eval-loop agent plan (see LOOP.md)
 
@@ -157,6 +161,12 @@ def main(argv: list[str] | None = None) -> None:
         from cli import main as cli_main
 
         cli_main(["judge", *rest])
+        return
+
+    if cmd in ("label", "lab"):
+        from cli import main as cli_main
+
+        cli_main(["label", *rest])
         return
 
     if cmd in ("calibrate", "cal"):
