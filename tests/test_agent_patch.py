@@ -180,8 +180,7 @@ def test_repo_variants_dir_is_untouched(diagnosis, variants):
     before = sorted(p.name for p in (ROOT / "variants").iterdir())
     _run(diagnosis, variants, skip_llm=True)
     after = sorted(p.name for p in (ROOT / "variants").iterdir())
-    assert before == after
-    assert not [p for p in (ROOT / "variants").iterdir() if p.name.startswith("auto_")]
+    assert before == after  # real loop runs may leave auto_* here; tests must add none
 
 
 # --------------------------------------------------------------------------

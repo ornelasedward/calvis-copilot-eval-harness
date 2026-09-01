@@ -141,6 +141,37 @@ def preserve_verdict(
     }
 
 
+def conduct_no_regression(row: dict[str, Any]) -> dict[str, Any]:
+    """Conduct holdout as a no-regression gate, like the voice recipe.
+
+    The production prompt already breaks the floor on most anchor turns, so an
+    absolute "variant breaks nothing" gate would veto every patch. The loop
+    gate is: the variant breaks the floor on no turn where the control held it.
+    The absolute verdict is kept on the row as `absolute_pass` for the record.
+    """
+    score = row.get("score") or {}
+    v_fail = {(f.get("shift"), f.get("turn"), f.get("scenario"), f.get("check"))
+              for f in (score.get("variant") or {}).get("failing_turns") or []}
+    c_fail = {(f.get("shift"), f.get("turn"), f.get("scenario"), f.get("check"))
+              for f in (score.get("control") or {}).get("failing_turns") or []}
+    if row.get("pass") is None or not score:
+        return row
+    new = sorted(v_fail - c_fail)
+    out = dict(row)
+    out["absolute_pass"] = row.get("pass")
+    out["pass"] = not new
+    out["regressions"] = [f"{s} t{t} {sc} {ck}" for s, t, sc, ck in new]
+    out["control_breaks"] = len(c_fail)
+    out["variant_breaks"] = len(v_fail)
+    out["detail"] = (
+        f"no conduct regression vs control ({len(v_fail)} vs {len(c_fail)} floor breaks)"
+        if not new
+        else "conduct regression on turns the control held: " + "; ".join(out["regressions"][:6])
+    )
+    out.pop("score", None)
+    return out
+
+
 def combine_holdouts(results: list[dict[str, Any] | None]) -> dict[str, Any] | None:
     """AND two holdouts into the one `holdout_pass` the ScoreCard carries.
 
@@ -584,6 +615,7 @@ def evaluate_diagnosis(
             "control_run_id": plan.get("control_run_id"),
             "variant_run_id": plan.get("variant_run_id"),
             "detail": (result.get("score") or {}).get("detail"),
+            "score": result.get("score") or {},
         }
         c: list[dict] = []
         v: list[dict] = []
@@ -604,7 +636,7 @@ def evaluate_diagnosis(
 
     if include_conduct_holdout and diagnosis.holdout_recipe != CONDUCT_HOLDOUT_RECIPE:
         row, _c, _v = _run_holdout(CONDUCT_HOLDOUT_RECIPE)
-        holdouts.append(row)
+        holdouts.append(conduct_no_regression(row))
 
     holdout = next((h for h in holdouts if h), None)
 
