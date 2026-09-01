@@ -207,10 +207,18 @@ def discover_changed_files(
     return []
 
 
+def _unquote_git_path(line: str) -> str:
+    # git C-quotes paths containing backslashes or non-ASCII ("a\\b.md").
+    name = line.strip()
+    if len(name) >= 2 and name[0] == '"' and name[-1] == '"':
+        name = name[1:-1].encode("latin-1", "backslashreplace").decode("unicode_escape")
+    return name
+
+
 def _git_diff_name_only(a: Path, b: Path, *, cwd: Path) -> list[str] | None:
     attempts = [
-        ["git", "diff", "--no-index", "--name-only", "--", str(a), str(b)],
-        ["git", "diff", "--name-only", "--", str(a), str(b)],
+        ["git", "diff", "--no-index", "--name-only", "--", a.as_posix(), b.as_posix()],
+        ["git", "diff", "--name-only", "--", a.as_posix(), b.as_posix()],
     ]
     for cmd in attempts:
         try:
@@ -228,7 +236,7 @@ def _git_diff_name_only(a: Path, b: Path, *, cwd: Path) -> list[str] | None:
         # --no-index exits 1 when files differ, 0 when identical.
         if proc.returncode not in (0, 1):
             continue
-        files = [ln.strip() for ln in proc.stdout.splitlines() if ln.strip()]
+        files = [_unquote_git_path(ln) for ln in proc.stdout.splitlines() if ln.strip()]
         return files
     return None
 
@@ -249,7 +257,7 @@ def _git_working_tree_names(*, cwd: Path) -> list[str] | None:
         if proc.returncode != 0:
             return None
         for ln in proc.stdout.splitlines():
-            name = ln.strip()
+            name = _unquote_git_path(ln)
             if name and name not in seen:
                 seen.add(name)
                 files.append(name)
