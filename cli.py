@@ -323,6 +323,26 @@ def cmd_test(args: argparse.Namespace) -> None:
         sys.exit(1)
 
 
+def cmd_go(args: argparse.Namespace) -> None:
+    from harness.router import run_go
+
+    result = run_go(
+        target=args.target,
+        control=args.control,
+        variant=args.variant,
+        intent=args.intent or "",
+        budget=args.budget,
+        rank=args.rank,
+        dry_run=args.dry_run,
+        run_jobs_fn=None if args.dry_run else run_jobs,
+        adapter=args.adapter,
+        model=args.model,
+    )
+    if not args.dry_run:
+        plan = result["plan"]
+        print(f"executed order={plan['order']} budget={plan['budget']}")
+
+
 def cmd_analyze(args: argparse.Namespace) -> None:
     from harness.advisor import run_advisor
 
@@ -393,6 +413,30 @@ def main(argv: list[str] | None = None) -> None:
     t.add_argument("--repeat", type=int, default=1)
     t.add_argument("--dry-run", action="store_true", help="Print plan only; no API calls")
     t.set_defaults(func=cmd_test)
+
+    g = sub.add_parser(
+        "go",
+        help="Compile (and optionally LLM-rank) which recipes to run",
+    )
+    g.add_argument(
+        "target",
+        nargs="?",
+        default=None,
+        help="va/v2/v3/vb/vc or a variants/ path (inferred if omitted)",
+    )
+    g.add_argument("--control", default=None, help="Control variant path")
+    g.add_argument("--variant", default=None, help="Candidate variant path")
+    g.add_argument("--intent", default="", help="What the prompt change is for")
+    g.add_argument("--budget", type=int, default=None, help="Max recipes to run")
+    g.add_argument(
+        "--rank",
+        action="store_true",
+        help="Optional LLM ranking after the compiler (catalog still constrains)",
+    )
+    g.add_argument("-n", "--dry-run", action="store_true", help="Print plan only; no recipe runs")
+    g.add_argument("--adapter", choices=["anthropic", "openai"], default=None)
+    g.add_argument("--model", default=None, help="Copilot model for live recipe runs")
+    g.set_defaults(func=cmd_go)
 
     a = sub.add_parser(
         "analyze",

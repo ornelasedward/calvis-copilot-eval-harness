@@ -19,6 +19,8 @@ Set API keys in `.env`, then use the **short** launcher from the repo root:
 .\cx t wl             # welcome smoke
 .\cx t es             # escalation safety full-shift (A3)
 .\cx t qt             # quietness probe (A3)
+.\cx go v3 -n         # compiler plan for Variant A3 (no LLM)
+.\cx go v3 -n --rank  # compiler + optional LLM ranker (catalog still constrains)
 .\cx why v3           # advisor on Variant A3 diff
 .\cx why vb -n        # advisor on B, no LLM
 ```
@@ -55,7 +57,17 @@ py calvis.py t cl -n
 | `a3-shift-55252` | No missed escalations on 55252 turns 5–9 |
 | `a3-quiet-probe` | Quietness no-regression on clear no-op turns |
 
-Deterministic scorers own **PASS/FAIL**. The advisor only narrates.
+Deterministic scorers own **PASS/FAIL**. The advisor only narrates. The optional
+`cx go --rank` ranker only reorders/drops/pulls recipe cards; it is never a verdict.
+
+`cx go` is the deterministic compiler: it reads recipe cards + the prompt diff and
+emits `{must_run, should_run, skip, order, budget}`. `smoke-welcome` stays first.
+`--rank` (off by default) asks a **different** model (`defaults.router.model` in
+`experiments/recipes.json`, not the copilot under test) to propose a revised plan.
+A code validator then re-inserts dropped `must_run`, strips unknown ids, re-applies
+the budget cap, and keeps `smoke-welcome` first. On LLM/JSON failure after one retry
+the compiler plan is used and the fallback is noted. `cx go -n --rank` prints both
+plans and a diff; omitting `--rank` is compiler-only.
 
 ## MVP shifts
 

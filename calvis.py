@@ -9,6 +9,8 @@ Examples:
   py calvis.py t quiet
   py calvis.py why a3       analyze prompt diff (LLM)
   py calvis.py why b -n     analyze without LLM
+  py calvis.py go v3 -n     compiler recipe plan
+  py calvis.py go v3 -n --rank   optional LLM ranker (not a verdict)
 
 Or from repo root on Windows:  .\\cx t b
 """
@@ -33,6 +35,7 @@ def _help() -> None:
 
   cx | cx ls                 list codes
   cx t <code> [-n]           run test recipe
+  cx go [code] [-n] [--rank] compile (optional LLM rank) a recipe plan
   cx why <code> [-n]         analyze prompt vs baseline
 
   Test codes:   wl=welcome  cl=claims  es=escalation  qt=quietness
@@ -41,6 +44,8 @@ def _help() -> None:
 Examples:
   .\\cx t cl -n
   .\\cx t es
+  .\\cx go v3 -n
+  .\\cx go v3 -n --rank --intent "quietness without losing escalations"
   .\\cx why v3 -n
 """
     )
@@ -84,6 +89,68 @@ def main(argv: list[str] | None = None) -> None:
                 control=None,
                 repeat=1,
                 dry_run=dry,
+            )
+        )
+        return
+
+    if cmd in ("go", "g"):
+        from cli import cmd_go
+        import argparse
+
+        target = None
+        dry = False
+        rank = False
+        intent = ""
+        budget = None
+        control = None
+        variant = None
+        adapter = None
+        model = None
+        i = 0
+        while i < len(rest):
+            tok = rest[i]
+            if tok in ("-n", "--dry-run"):
+                dry = True
+            elif tok == "--rank":
+                rank = True
+            elif tok == "--intent":
+                i += 1
+                intent = rest[i] if i < len(rest) else ""
+            elif tok.startswith("--intent="):
+                intent = tok.split("=", 1)[1]
+            elif tok == "--budget":
+                i += 1
+                budget = int(rest[i]) if i < len(rest) else None
+            elif tok.startswith("--budget="):
+                budget = int(tok.split("=", 1)[1])
+            elif tok == "--control":
+                i += 1
+                control = rest[i] if i < len(rest) else None
+            elif tok == "--variant":
+                i += 1
+                variant = rest[i] if i < len(rest) else None
+            elif tok == "--adapter":
+                i += 1
+                adapter = rest[i] if i < len(rest) else None
+            elif tok == "--model":
+                i += 1
+                model = rest[i] if i < len(rest) else None
+            elif not tok.startswith("-") and target is None:
+                target = tok
+            else:
+                sys.exit(f"unknown go flag: {tok}")
+            i += 1
+        cmd_go(
+            argparse.Namespace(
+                target=target,
+                control=control,
+                variant=variant,
+                intent=intent,
+                budget=budget,
+                rank=rank,
+                dry_run=dry,
+                adapter=adapter,
+                model=model,
             )
         )
         return

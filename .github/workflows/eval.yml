@@ -31,6 +31,7 @@ jobs:
           python calvis.py ls
           python calvis.py t cl -n
           python calvis.py why vb -n
+          python calvis.py go v3 -n
 
   live-smoke:
     name: Live recipe smoke (optional)
