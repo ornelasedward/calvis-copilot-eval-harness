@@ -19,8 +19,16 @@ Set API keys in `.env`, then use the **short** launcher from the repo root:
 .\cx t wl             # welcome smoke
 .\cx t es             # escalation safety full-shift (A3)
 .\cx t qt             # quietness probe (A3)
+.\cx t ag -n          # photo-gamer process probe (canned / zero API)
+.\cx t ag             # photo-gamer process probe (live)
+.\cx go v3 -n         # compiler plan for Variant A3 (no LLM)
+.\cx go v3 -n --rank  # compiler + optional LLM ranker (catalog still constrains)
 .\cx why v3           # advisor on Variant A3 diff
 .\cx why vb -n        # advisor on B, no LLM
+.\cx mine --dry       # failure-mode miner (sweep + gap report, no API)
+.\cx judge <run>      # ADVISORY conduct checklist (never a gate)
+.\cx judge --pair a b # ADVISORY pairwise preference
+.\cx calibrate        # ADVISORY judge vs gold labels
 ```
 
 | Code | Means |
@@ -29,24 +37,36 @@ Set API keys in `.env`, then use the **short** launcher from the repo root:
 | `cl` | claims verification (Variant B) |
 | `es` | escalation safety full-shift (A3) |
 | `qt` | quietness probe (A3) |
+| `vo` | voice compliance (Variant C) |
+| `ag` | photo-gamer process probe (scripted guard) |
 | `pc` | partial-compliance persona (scripted) |
 | `pb` | pushback persona (scripted) |
 | `hs` | hostile persona (scripted) |
-| `va`/`v2`/`v3`/`vb` | analyze Variant A / A2 / A3 / B |
+| `va`/`v2`/`v3`/`vb`/`vc` | analyze Variant A / A2 / A3 / B / C |
 
-Same via Python: `py calvis.py t cl` / `py calvis.py why v3`.
+Plan from changed files (offline, no API):
+
+```bash
+.\cx go -n --files scheduled_check_in.md
+.\cx go v3 -n
+.\cx go v3 -n --rank --intent "quietness without losing escalations"
+.\cx go v3 --intent "escalation" --budget 2 --yes
+```
+
+`cx t <alias>` is unchanged. Same via Python: `py calvis.py t cl` / `py calvis.py go -n` / `py calvis.py why v3`.
 
 ## CI
 
 GitHub Actions (`.github/workflows/eval.yml`):
 
-- On push/PR to `main` or `staging`: pytest + `calvis.py ls` + dry-run `t cl` / `why vb`
+- On push/PR to `main` or `staging`: pytest + `calvis.py ls` + dry-run `t cl` / `t ag` / `go -n` / `why vb`
 - Manual **workflow_dispatch** with `live_recipes=true`: runs `t wl` if `OPENAI_API_KEY` repo secret is set
 
 ```bash
 # Local mirror of CI offline gate
 py -m pytest tests -q
 py calvis.py t cl -n
+py calvis.py t ag -n
 ```
 
 ## Recipes (see `experiments/recipes.json`)
@@ -57,11 +77,28 @@ py calvis.py t cl -n
 | `b-claims` | Work-claim verification lift (`verify_b`) |
 | `a3-shift-55252` | No missed escalations on 55252 turns 5–9 |
 | `a3-quiet-probe` | Quietness no-regression on clear no-op turns |
+| `photo-gamer` | Scripted photo-gamer: inspect proof, refuse reused site-hero, ping budget |
 | `partial-compliance` | Guard sends note xor photo; ack + missing-half ask + ping budget |
 | `pushback` | Guard says stop babysitting; ease off, still ask the next window |
 | `hostile` | Guard calls a photo ask surveillance; no threats, no 3rd ping |
 
-Deterministic scorers own **PASS/FAIL**. The advisor only narrates.
+Deterministic scorers own **PASS/FAIL**. The advisor only narrates. The optional
+`cx go --rank` ranker only reorders/drops/pulls recipe cards; it is never a verdict.
+The conduct checklist judge (`cx judge`, `cx calibrate`) is also **ADVISORY**: it
+prints must_not_happen flags and gold-label alignment, and never blocks or passes
+a run.
+
+`cx go` is the deterministic compiler: it reads recipe cards + the prompt diff and
+emits `{must_run, should_run, skip, order, budget_usd}`. `smoke-welcome` stays first.
+`--rank` (off by default) asks a **different** model (`defaults.router.model` in
+`experiments/recipes.json`, not the copilot under test) to propose a revised plan.
+A code validator then re-inserts dropped `must_run`, strips unknown ids, re-applies
+the budget cap, and keeps `smoke-welcome` first. On LLM/JSON failure after one retry
+the compiler plan is used and the fallback is noted. `cx go -n --rank` prints both
+plans and a diff; omitting `--rank` is compiler-only. The ranker never declares
+pass/fail. Judge model is `defaults.judge.model` in `experiments/recipes.json` and
+must differ from the copilot model. Gold labels live in
+`experiments/gold/conduct_labels.json`.
 
 ## MVP shifts
 

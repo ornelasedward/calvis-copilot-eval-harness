@@ -12,14 +12,14 @@ from pathlib import Path
 from harness.lexicon import surveillance_violations
 from harness.loader import load_shift
 from harness.recipes import SCORERS, execute_recipe, resolve_recipe_name
-from harness.scenario import CannedAdapter, load_fixture, run_scenario
+from harness.router import compile_plan
+from harness.scenario import CannedAdapter, canned_steps_for_script, load_fixture, run_scenario
 from harness.score_conduct import (
     score_hostile_trajectory,
     score_partial_trajectory,
     score_pushback_trajectory,
 )
-from harness.schemas import EscalationAction, MessageAction, RunManifest, TurnResult, Usage
-from harness.store import ExperimentStore, new_run_id
+from harness.schemas import EscalationAction, MessageAction, TurnResult, Usage
 
 ROOT = Path(__file__).resolve().parents[1]
 FIXTURES = ROOT / "experiments" / "fixtures"
@@ -103,7 +103,8 @@ def test_persona_fixtures_load():
         shift = load_shift(FIXTURES / f"{name}.json")
         assert shift.id == name
         assert shift.script and shift.script.get("gold")
-        assert shift.script.get("wakes")
+        assert shift.script.get("start_state")
+        assert shift.script.get("states")
         assert (shift.script.get("canned") or {}).get("passing")
 
 
@@ -441,39 +442,30 @@ def test_dry_recipe_pushback_and_hostile_pass():
         assert result["pass"] is True, (alias, result["score"])
 
 
-def test_canned_adapter_drives_partial_fixture(tmp_path):
-    fixture = load_fixture(FIXTURES / "partial.json")
-    canned = CannedAdapter(fixture.script["canned"]["passing"])
-    store = ExperimentStore(tmp_path / "runs")
-    run_id = "canned_" + new_run_id()
-    store.create_run(
-        RunManifest(
-            run_id=run_id,
-            variant_name="baseline",
-            prompt_hash="h",
-            model="canned",
-            model_params={},
-            adapter="canned",
-            data_version="d",
-            code_version="c",
-            mode="scenario",
-            shifts=["partial"],
-            repetitions=1,
-            created_at=_ts(),
-        )
+def test_router_picks_personas_from_cards():
+    partial_plan = compile_plan(changed_files=["obligation_due.md"])
+    assert "partial-compliance" in set(partial_plan["must_run"]) | set(
+        partial_plan["should_run"]
     )
+    comms_plan = compile_plan(changed_files=["comms_policy.md"])
+    selected = set(comms_plan["must_run"]) | set(comms_plan["should_run"])
+    assert "pushback" in selected
+    assert "hostile" in selected
+
+
+def test_canned_adapter_drives_partial_fixture():
+    fixture = load_fixture(FIXTURES / "partial.json")
+    canned = CannedAdapter(canned_steps_for_script(fixture.script))
     results = run_scenario(
-        fixture=fixture,
+        fixture,
+        canned,
         variant_dir=ROOT / "variants" / "baseline",
-        adapter=canned,
-        run_id=run_id,
-        store=store,
+        run_id="canned_partial",
         repetition=0,
-        canned=canned,
     )
     assert len(results) == 3
     gold = fixture.script["gold"]
-    stored = store.load_turns(run_id, "partial")
+    stored = [r.to_dict() for r in results]
     score2 = score_partial_trajectory(stored, gold)
     assert score2["pass"], score2
     assert stored[1]["trigger"] == "guard_message"

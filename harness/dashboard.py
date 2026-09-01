@@ -27,6 +27,8 @@ TEMPLATE = """<!DOCTYPE html>
     --ops: #8b1e1e;
     --ok: #1e5c3a;
     --card: #fffdf8;
+    --advisory: #6b4c1e;
+    --advisory-bg: #f4e6c1;
   }}
   * {{ box-sizing: border-box; }}
   body {{
@@ -53,6 +55,12 @@ TEMPLATE = """<!DOCTYPE html>
   .tier-cosmetic {{ color: var(--muted); }}
   .pass {{ color: var(--ok); font-weight: 600; }}
   .fail {{ color: var(--ops); font-weight: 600; }}
+  .advisory {{
+    color: var(--advisory); background: var(--advisory-bg);
+    font-weight: 700; letter-spacing: 0.05em;
+    padding: 0.05rem 0.4rem; display: inline-block;
+  }}
+  .advisory-panel {{ border-color: #c9a227; background: #fbf6e8; }}
   .msg {{ white-space: pre-wrap; font-size: 0.88rem; }}
   .note {{ font-size: 0.85rem; color: var(--muted); margin-top: 0.5rem; }}
   @media (max-width: 900px) {{ .grid {{ grid-template-columns: 1fr; }} main, header {{ padding-left: 1rem; padding-right: 1rem; }} }}
@@ -81,6 +89,12 @@ TEMPLATE = """<!DOCTYPE html>
     <p class="note">Baseline is a reference, not ground truth. Assertions describe intended change.</p>
   </section>
 
+  <section class="panel advisory-panel">
+    <h2><span class="advisory">ADVISORY</span> conduct flags (never a gate)</h2>
+    {advisory}
+    <p class="note">Deterministic scorers own PASS/FAIL. The checklist judge only narrates must_not_happen flags.</p>
+  </section>
+
   <section class="panel">
     <h2>Changed decisions</h2>
     <p class="note">Operational rows (escalation / coverage / unanswered guard) require human review and are never cleared by an automated judge.</p>
@@ -95,6 +109,44 @@ TEMPLATE = """<!DOCTYPE html>
 </body>
 </html>
 """
+
+
+def _advisory_html(store: ExperimentStore, baseline_id: str, variant_id: str) -> str:
+    """Render attached judge snapshots. Distinct from GATE pass/fail cells."""
+    from harness.judge import MUST_NOT_HAPPEN_IDS, latest_judge_path
+
+    chunks = []
+    for label, run_id in (("Baseline", baseline_id), ("Variant", variant_id)):
+        path = latest_judge_path(store.run_dir(run_id))
+        if not path:
+            continue
+        data = json.loads(path.read_text(encoding="utf-8"))
+        flags = data.get("must_not_happen") or []
+        flag_txt = ", ".join(html.escape(f) for f in flags) if flags else "(none)"
+        rows = []
+        for item in data.get("items") or []:
+            verdict = html.escape(str(item.get("verdict") or "n_a"))
+            flag_mark = ""
+            if item.get("id") in MUST_NOT_HAPPEN_IDS and item.get("verdict") == "yes":
+                flag_mark = ' <span class="advisory">FLAG</span>'
+            quote = html.escape(item.get("quote") or "")
+            rows.append(
+                f"<tr><td>{html.escape(str(item.get('id','')))}</td>"
+                f"<td>{verdict}{flag_mark}</td>"
+                f"<td class='msg'>{quote}</td></tr>"
+            )
+        body = "".join(rows) or "<tr><td colspan=3>No checklist items</td></tr>"
+        chunks.append(
+            f"<h3>{html.escape(label)} <code>{html.escape(run_id)}</code></h3>"
+            f"<p><span class='advisory'>ADVISORY FLAGS</span> {flag_txt}</p>"
+            f"<table><tr><th>Item</th><th>Verdict</th><th>Quote</th></tr>{body}</table>"
+        )
+    if not chunks:
+        return (
+            "<p class='note'>No advisory checklist attached to these runs. "
+            "Run <code>cx judge &lt;run&gt;</code>.</p>"
+        )
+    return "".join(chunks)
 
 
 def _metrics_table(s: dict) -> str:
@@ -159,6 +211,8 @@ def build_dashboard(
             + "".join(rows) + "</table>"
         )
 
+    advisory_html = _advisory_html(store, baseline_id, variant_id)
+
     change_rows = []
     for c in changes:
         change_rows.append(
@@ -202,6 +256,7 @@ def build_dashboard(
         baseline_table=_metrics_table(bs),
         variant_table=_metrics_table(vs),
         assertions=assertion_html,
+        advisory=advisory_html,
         changes_table=changes_table,
         n_side=min(12, len(changes)),
         side_by_side="".join(side) or "<p class='note'>No changed turns to display.</p>",

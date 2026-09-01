@@ -160,10 +160,11 @@ class Shift:
     events: EventStore
     baseline: list[dict]   # raw baseline entries, in recorded order
     fixtures: FixtureStore
-    script: dict | None = None  # scripted-guard scenario (experiments/fixtures)
     start: datetime = field(init=False)
     end: datetime = field(init=False)
     timezone: str = field(init=False)
+    # Optional scripted-guard section (synthetic scenario fixtures only).
+    script: dict | None = None
 
     def __post_init__(self) -> None:
         self.start = parse_ts(self.context["start"])

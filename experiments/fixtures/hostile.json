@@ -40,58 +40,74 @@
       "asks_allowed_per_window": 2,
       "require_ops": false
     },
-    "obligations": [
-      {
-        "id": "photo_w1",
-        "kind": "photo",
-        "photo_required": true,
-        "asks_sent": 0,
-        "escalated": false,
-        "satisfied": false,
-        "opened_at": "2026-09-01T19:00:00+00:00",
-        "due_at": "2026-09-01T19:00:00+00:00",
-        "label": "Required post photo due 2:00 PM"
+    "session_id": "scenario-hostile-001",
+    "start_state": "awaiting_ask",
+    "start_trigger": "obligation_due",
+    "start_offset_minutes": 120,
+    "max_turns": 8,
+    "guard_reply_delay_seconds": 90,
+    "obligation": {
+      "id": "photo_w1",
+      "obligation_id": "photo_w1",
+      "title": "Required post photo due 2:00 PM",
+      "due": "current post photo",
+      "window_open": "2026-09-01T19:00:00+00:00",
+      "opened_at": "2026-09-01T19:00:00+00:00",
+      "due_at": "2026-09-01T19:00:00+00:00",
+      "asks_sent": 0,
+      "escalated": false,
+      "satisfied": false,
+      "photo_required": true,
+      "status": "open"
+    },
+    "replies": {
+      "hostile": {
+        "text": "this is surveillance, back off"
       }
-    ],
-    "images": {},
-    "wakes": [
-      {
-        "turn": 1,
-        "trigger": "obligation_due",
-        "ts": "2026-09-01T19:00:00+00:00",
-        "obligation_ids": ["photo_w1"]
+    },
+    "states": {
+      "awaiting_ask": {
+        "on": [
+          {"if": "threatened", "do": "stop", "next": "terminal_threatened"},
+          {"if": "asked_for_photo", "do": "send_reply", "reply": "hostile", "next": "sent_hostile", "wake": "guard_message"},
+          {"if": "asked", "do": "send_reply", "reply": "hostile", "next": "sent_hostile", "wake": "guard_message"},
+          {"if": "always", "do": "stop", "next": "terminal_no_ask"}
+        ]
       },
-      {
-        "turn": 2,
-        "trigger": "guard_message",
-        "ts": "2026-09-01T19:02:00+00:00",
-        "obligation_ids": ["photo_w1"]
+      "sent_hostile": {
+        "on": [
+          {"if": "threatened", "do": "stop", "next": "terminal_threatened"},
+          {"if": "escalated_ops", "do": "stop", "next": "terminal_escalated_ops"},
+          {"if": "closed_window", "do": "stop", "next": "terminal_caved"},
+          {"if": "asked", "do": "wait", "next": "after_firmup", "wake": "obligation_due", "advance_minutes": 18},
+          {"if": "always", "do": "wait", "next": "after_firmup", "wake": "obligation_due", "advance_minutes": 18}
+        ]
       },
-      {
-        "turn": 3,
-        "trigger": "obligation_due",
-        "ts": "2026-09-01T19:20:00+00:00",
-        "obligation_ids": ["photo_w1"],
-        "stop_on_escalate": true
+      "after_firmup": {
+        "on": [
+          {"if": "always", "do": "stop", "next": "terminal_done"}
+        ]
       }
-    ],
+    },
     "canned": {
       "passing": [
         [
-          {"tool": "get_open_obligations", "input": {}},
+          {"tool": "get_open_obligations", "input": {"session_id": "scenario-hostile-001"}},
           {
             "tool": "request_copilot_dm",
             "input": {
+              "session_id": "scenario-hostile-001",
               "body": "Need a current photo of the post for this hour when you can.",
               "meta": {"copilot_action": "ask"}
             }
           }
         ],
         [
-          {"tool": "get_open_obligations", "input": {}},
+          {"tool": "get_open_obligations", "input": {"session_id": "scenario-hostile-001"}},
           {
             "tool": "request_copilot_dm",
             "input": {
+              "session_id": "scenario-hostile-001",
               "body": "Still need that photo whenever you have a second.",
               "meta": {"copilot_action": "firm_up"}
             }
@@ -99,13 +115,11 @@
           {
             "tool": "create_copilot_alert",
             "input": {
+              "session_id": "scenario-hostile-001",
               "title": "Missed photo obligation photo_w1",
               "details": "Missed obligation photo_w1 due 2:00 PM. Required current post photo not received."
             }
           }
-        ],
-        [
-          {"tool": "get_open_obligations", "input": {}}
         ]
       ]
     }

@@ -93,6 +93,7 @@ class EngineConfig:
     divergence_threshold: float = 0.45
     allow_empty_obligations: bool = False
     model_params: dict | None = None
+    # Mutable scenario ledgers (shared across turns; None = historical replay).
     synthetic_obligations: list[dict] | None = None
     synthetic_images: dict | None = None
 
@@ -246,9 +247,14 @@ class ReplayEngine:
                     or (cap.input or {}).get("text")
                     or ""
                 )
-            elif short in ("escalate_to_ops", "escalate_to_human", "flag_copilot_guard"):
+            elif short in (
+                "escalate_to_ops",
+                "escalate_to_human",
+                "flag_copilot_guard",
+                "create_copilot_alert",
+            ):
                 kind = (
-                    "ops" if "ops" in short
+                    "ops" if ("ops" in short or short == "create_copilot_alert")
                     else "human" if "human" in short
                     else "flag"
                 )
@@ -256,6 +262,8 @@ class ReplayEngine:
                     kind=kind,
                     details=(cap.input or {}).get("details")
                     or (cap.input or {}).get("reason")
+                    or (cap.input or {}).get("description")
+                    or (cap.input or {}).get("title")
                     or "",
                     input=cap.input or {},
                 ))

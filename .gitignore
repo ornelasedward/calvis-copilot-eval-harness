@@ -1,4 +1,5 @@
 runs/
+experiments/proposals/*.json
 __pycache__/
 *.pyc
 .pytest_cache/

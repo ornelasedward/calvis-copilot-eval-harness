@@ -364,10 +364,10 @@ class ToolSimulator:
     workspace: Workspace = field(default_factory=Workspace)
     allow_empty_obligations: bool = False
     prefer_reconstruction: bool = False
-    actions: list[ActionCapture] = field(default_factory=list)
-    records: list[ToolUseRecord] = field(default_factory=list)
     synthetic_obligations: list[dict] | None = None
     synthetic_images: dict | None = None
+    actions: list[ActionCapture] = field(default_factory=list)
+    records: list[ToolUseRecord] = field(default_factory=list)
 
     def __post_init__(self) -> None:
         if not self.workspace.files:
@@ -407,6 +407,11 @@ class ToolSimulator:
 
         if short == "get_open_obligations":
             return self._obligations(tool_input)
+
+        if short == "fetch_chat_image" and self.synthetic_images:
+            hit = self._synthetic_image(tool_input)
+            if hit is not None:
+                return hit
 
         if short in RECONSTRUCTION_CANDIDATES:
             return self._reconstruction_or_fixture(full, short, tool_input)
@@ -546,7 +551,7 @@ class ToolSimulator:
 
     def _synthetic_image(self, tool_input: dict) -> ToolUseRecord | None:
         url = tool_input.get("image_url") or tool_input.get("url") or ""
-        spec = self.synthetic_images.get(url) if self.synthetic_images else None
+        spec = (self.synthetic_images or {}).get(url)
         if spec is None:
             return None
         out = dict(spec) if isinstance(spec, dict) else {"ok": True, "image_url": url}

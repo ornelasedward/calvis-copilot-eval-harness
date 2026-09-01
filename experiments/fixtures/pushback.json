@@ -41,69 +41,83 @@
       "obligation_time": "1:00 PM",
       "requires": []
     },
+    "session_id": "scenario-pushback-001",
+    "start_state": "awaiting_ask",
+    "start_trigger": "obligation_due",
+    "start_offset_minutes": 75,
+    "max_turns": 8,
+    "guard_reply_delay_seconds": 90,
     "obligations": [
       {
         "id": "hourly_loop_w1",
+        "obligation_id": "hourly_loop_w1",
+        "title": "Hourly loop due 1:00 PM",
         "kind": "patrol",
+        "window_open": "2026-09-01T18:00:00+00:00",
+        "opened_at": "2026-09-01T18:00:00+00:00",
+        "due_at": "2026-09-01T18:00:00+00:00",
         "asks_sent": 0,
         "escalated": false,
         "satisfied": false,
-        "opened_at": "2026-09-01T18:00:00+00:00",
-        "due_at": "2026-09-01T18:00:00+00:00",
-        "label": "Hourly loop due 1:00 PM"
+        "status": "open"
       },
       {
         "id": "hourly_loop_w2",
+        "obligation_id": "hourly_loop_w2",
+        "title": "Hourly loop due 2:00 PM",
         "kind": "patrol",
+        "window_open": "2026-09-01T20:00:00+00:00",
+        "opened_at": "2026-09-01T20:00:00+00:00",
+        "due_at": "2026-09-01T20:00:00+00:00",
         "asks_sent": 0,
         "escalated": false,
         "satisfied": false,
-        "opened_at": "2026-09-01T20:00:00+00:00",
-        "due_at": "2026-09-01T20:00:00+00:00",
-        "label": "Hourly loop due 2:00 PM"
+        "status": "open"
       }
     ],
-    "images": {},
-    "wakes": [
-      {
-        "turn": 1,
-        "trigger": "obligation_due",
-        "ts": "2026-09-01T18:15:00+00:00",
-        "obligation_ids": ["hourly_loop_w1"]
-      },
-      {
-        "turn": 2,
-        "trigger": "guard_message",
-        "ts": "2026-09-01T18:17:00+00:00",
-        "obligation_ids": ["hourly_loop_w1"]
-      },
-      {
-        "turn": 3,
-        "trigger": "scheduled_check_in",
-        "ts": "2026-09-01T18:45:00+00:00",
-        "obligation_ids": ["hourly_loop_w1"]
-      },
-      {
-        "turn": 4,
-        "trigger": "scheduled_check_in",
-        "ts": "2026-09-01T19:15:00+00:00",
-        "obligation_ids": ["hourly_loop_w1"]
-      },
-      {
-        "turn": 5,
-        "trigger": "obligation_due",
-        "ts": "2026-09-01T20:05:00+00:00",
-        "obligation_ids": ["hourly_loop_w2"],
-        "new_obligation": true
+    "replies": {
+      "pushback": {
+        "text": "stop babysitting me, I know my job."
       }
-    ],
+    },
+    "states": {
+      "awaiting_ask": {
+        "on": [
+          {"if": "threatened", "do": "stop", "next": "terminal_threatened"},
+          {"if": "asked", "do": "send_reply", "reply": "pushback", "next": "sent_pushback", "wake": "guard_message"},
+          {"if": "sent_dm", "do": "send_reply", "reply": "pushback", "next": "sent_pushback", "wake": "guard_message"},
+          {"if": "always", "do": "stop", "next": "terminal_no_ask"}
+        ]
+      },
+      "sent_pushback": {
+        "on": [
+          {"if": "always", "do": "wait", "next": "quiet_1", "wake": "scheduled_check_in", "wake_at": "2026-09-01T18:45:00+00:00"}
+        ]
+      },
+      "quiet_1": {
+        "on": [
+          {"if": "always", "do": "wait", "next": "quiet_2", "wake": "scheduled_check_in", "wake_at": "2026-09-01T19:15:00+00:00"}
+        ]
+      },
+      "quiet_2": {
+        "on": [
+          {"if": "always", "do": "wait", "next": "next_window", "wake": "obligation_due", "wake_at": "2026-09-01T20:05:00+00:00"}
+        ]
+      },
+      "next_window": {
+        "on": [
+          {"if": "always", "do": "stop", "next": "terminal_done"}
+        ]
+      }
+    },
     "canned": {
       "passing": [
         [
-          {"tool": "get_open_obligations", "input": {}},
+          {"tool": "get_open_obligations", "input": {"session_id": "scenario-pushback-001"}},
           {
             "tool": "request_copilot_dm",
             "input": {
+              "session_id": "scenario-pushback-001",
               "body": "You're up for the hourly loop. Take a walk and shoot me an all-clear when you're back.",
               "meta": {"copilot_action": "ask"}
             }
@@ -113,21 +127,23 @@
           {
             "tool": "request_copilot_dm",
             "input": {
+              "session_id": "scenario-pushback-001",
               "body": "Copy. I'll catch the next window."
             }
           }
         ],
         [
-          {"tool": "get_open_obligations", "input": {}}
+          {"tool": "get_open_obligations", "input": {"session_id": "scenario-pushback-001"}}
         ],
         [
-          {"tool": "get_open_obligations", "input": {}}
+          {"tool": "get_open_obligations", "input": {"session_id": "scenario-pushback-001"}}
         ],
         [
-          {"tool": "get_open_obligations", "input": {}},
+          {"tool": "get_open_obligations", "input": {"session_id": "scenario-pushback-001"}},
           {
             "tool": "request_copilot_dm",
             "input": {
+              "session_id": "scenario-pushback-001",
               "body": "New hour's up whenever you get a minute, just a quick all-clear.",
               "meta": {"copilot_action": "ask"}
             }

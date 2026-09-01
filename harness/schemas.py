@@ -89,6 +89,7 @@ class TurnResult:
     association_confidence: AssociationConfidence | None = None
     raw_trace_ref: str | None = None
     raw_events: list[dict] = field(default_factory=list)
+    repetition: int = 0
 
     def to_dict(self) -> dict:
         return asdict(self)

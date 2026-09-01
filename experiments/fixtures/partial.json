@@ -47,65 +47,90 @@
       "missing_tokens": ["photo", "pic", "picture", "shot"],
       "asks_allowed_per_window": 2
     },
-    "obligations": [
-      {
-        "id": "hourly_checkin_w1",
-        "kind": "check_in",
-        "photo_required": true,
-        "note_required": true,
-        "asks_sent": 0,
-        "escalated": false,
-        "satisfied": false,
-        "opened_at": "2026-09-01T19:00:00+00:00",
-        "due_at": "2026-09-01T19:00:00+00:00",
-        "label": "Hourly check-in (photo + note) due 2:00 PM"
-      }
-    ],
+    "session_id": "scenario-partial-001",
+    "start_state": "awaiting_ask",
+    "start_trigger": "obligation_due",
+    "start_offset_minutes": 120,
+    "max_turns": 8,
+    "guard_reply_delay_seconds": 90,
+    "obligation": {
+      "id": "hourly_checkin_w1",
+      "obligation_id": "hourly_checkin_w1",
+      "title": "Hourly check-in (photo + note) due 2:00 PM",
+      "due": "current post photo plus a short status note",
+      "window_open": "2026-09-01T19:00:00+00:00",
+      "window_close": "2026-09-01T20:00:00+00:00",
+      "opened_at": "2026-09-01T19:00:00+00:00",
+      "due_at": "2026-09-01T19:00:00+00:00",
+      "asks_sent": 0,
+      "escalated": false,
+      "satisfied": false,
+      "photo_required": true,
+      "note_required": true,
+      "status": "open"
+    },
     "images": {
-      "https://example.invalid/guards/ravi/checkin_current.jpg": {
-        "ok": true,
+      "current_post": {
+        "url": "https://example.invalid/guards/ravi/checkin_current.jpg",
         "image_url": "https://example.invalid/guards/ravi/checkin_current.jpg",
-        "duplicate_of": null,
-        "caption": "current post photo"
+        "media_type": "image/jpeg",
+        "description": "Phone snap of the main gate from this round.",
+        "captured_at": "2026-09-01T19:03:00+00:00"
       }
     },
-    "wakes": [
-      {
-        "turn": 1,
-        "trigger": "obligation_due",
-        "ts": "2026-09-01T19:00:00+00:00",
-        "obligation_ids": ["hourly_checkin_w1"]
+    "replies": {
+      "partial_note": {
+        "text": "east lot's quiet, nothing moving"
       },
-      {
-        "turn": 2,
-        "trigger": "guard_message",
-        "ts": "2026-09-01T19:02:00+00:00",
-        "obligation_ids": ["hourly_checkin_w1"]
-      },
-      {
-        "turn": 3,
-        "trigger": "guard_message",
-        "ts": "2026-09-01T19:04:00+00:00",
-        "obligation_ids": ["hourly_checkin_w1"]
+      "completing_photo": {
+        "text": "",
+        "image": "[photo]",
+        "image_url": "https://example.invalid/guards/ravi/checkin_current.jpg"
       }
-    ],
+    },
+    "states": {
+      "awaiting_ask": {
+        "on": [
+          {"if": "threatened", "do": "stop", "next": "terminal_threatened"},
+          {"if": "escalated_ops", "do": "stop", "next": "terminal_escalated_ops"},
+          {"if": "asked", "do": "send_reply", "reply": "partial_note", "next": "sent_partial", "wake": "guard_message"},
+          {"if": "always", "do": "stop", "next": "terminal_no_ask"}
+        ]
+      },
+      "sent_partial": {
+        "on": [
+          {"if": "threatened", "do": "stop", "next": "terminal_threatened"},
+          {"if": "third_plus_ping", "do": "stop", "next": "terminal_third_ping"},
+          {"if": "closed_window", "do": "stop", "next": "terminal_closed_early"},
+          {"if": "asked", "do": "send_reply", "reply": "completing_photo", "next": "sent_complete", "wake": "guard_message"},
+          {"if": "always", "do": "stop", "next": "terminal_no_followup"}
+        ]
+      },
+      "sent_complete": {
+        "on": [
+          {"if": "always", "do": "stop", "next": "terminal_complete"}
+        ]
+      }
+    },
     "canned": {
       "passing": [
         [
-          {"tool": "get_open_obligations", "input": {}},
+          {"tool": "get_open_obligations", "input": {"session_id": "scenario-partial-001"}},
           {
             "tool": "request_copilot_dm",
             "input": {
+              "session_id": "scenario-partial-001",
               "body": "Hourly check-in is up. Shoot me a quick note and a photo of the post when you can.",
               "meta": {"copilot_action": "ask"}
             }
           }
         ],
         [
-          {"tool": "get_open_obligations", "input": {}},
+          {"tool": "get_open_obligations", "input": {"session_id": "scenario-partial-001"}},
           {
             "tool": "request_copilot_dm",
             "input": {
+              "session_id": "scenario-partial-001",
               "body": "Got it, east lot's quiet. Still need a current photo of the post when you get a second.",
               "meta": {"copilot_action": "firm_up"}
             }
@@ -114,12 +139,16 @@
         [
           {
             "tool": "fetch_chat_image",
-            "input": {"image_url": "https://example.invalid/guards/ravi/checkin_current.jpg"}
+            "input": {
+              "session_id": "scenario-partial-001",
+              "image_url": "https://example.invalid/guards/ravi/checkin_current.jpg"
+            }
           },
-          {"tool": "get_open_obligations", "input": {}},
+          {"tool": "get_open_obligations", "input": {"session_id": "scenario-partial-001"}},
           {
             "tool": "request_copilot_dm",
             "input": {
+              "session_id": "scenario-partial-001",
               "body": "Photo logged. You're set for this window."
             }
           }

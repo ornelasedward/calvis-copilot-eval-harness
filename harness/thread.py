@@ -106,7 +106,7 @@ class ThreadManager:
             ChatMessage(
                 ts=ts,
                 role="guard",
-                text=text,
+                text=text or "",
                 image=image,
                 image_url=image_url,
                 image_meta=image_meta,
@@ -149,9 +149,10 @@ class ThreadManager:
         for m in self.history_as_of(as_of, mode=mode):
             content = m.text
             if m.image or m.image_url:
-                content = (content + "\n[photo]").strip() if content else "[photo]"
+                photo = "[photo]"
                 if m.image_url:
-                    content += f"\nimage_url: {m.image_url}"
+                    photo = f"[photo]\nimage_url: {m.image_url}"
+                content = (content + "\n" + photo).strip() if content else photo
             role = "user" if m.role == "guard" else "assistant"
             out.append({"role": role, "content": content})
         return out

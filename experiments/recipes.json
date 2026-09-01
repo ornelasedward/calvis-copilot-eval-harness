@@ -2,7 +2,19 @@
   "defaults": {
     "adapter": "openai",
     "model": "gpt-5.6-sol",
-    "control_variant": "variants/baseline"
+    "control_variant": "variants/baseline",
+    "router": {
+      "model": "gpt-4.1-mini",
+      "adapter": "openai"
+    },
+    "miner": {
+      "model": "gpt-5.6-luna",
+      "adapter": "openai"
+    },
+    "judge": {
+      "adapter": "openai",
+      "model": "gpt-5.6-luna"
+    }
   },
   "aliases": {
     "wl": "smoke-welcome",
@@ -10,6 +22,7 @@
     "es": "a3-shift-55252",
     "qt": "a3-quiet-probe",
     "vo": "c-voice",
+    "ag": "photo-gamer",
     "pc": "partial-compliance",
     "pb": "pushback",
     "hs": "hostile"
@@ -20,9 +33,10 @@
     "es": "escalation safety full-shift (A3)",
     "qt": "quietness probe (A3)",
     "vo": "voice compliance (Variant C)",
-    "pc": "partial-compliance persona (text xor photo)",
-    "pb": "pushback persona (stop babysitting me)",
-    "hs": "hostile persona (this is surveillance)"
+    "ag": "photo-gamer process probe (scripted guard)",
+    "pc": "partial-compliance persona (scripted)",
+    "pb": "pushback persona (scripted)",
+    "hs": "hostile persona (scripted)"
   },
   "analyze_targets": {
     "va": "variants/variant_a",
@@ -48,7 +62,20 @@
         {"shift": "55252", "turns": [1]}
       ],
       "scorer": "welcome",
-      "suggested_when": ["any prompt change"]
+      "suggested_when": ["any prompt change"],
+      "card": {
+        "intent": ["smoke", "welcome"],
+        "risk_class": "smoke",
+        "cost": "turn-cheap",
+        "est_usd": 0.05,
+        "covers": ["welcome"],
+        "required_when": {
+          "files": ["session_start.md"],
+          "intents": ["smoke", "welcome"]
+        },
+        "after": [],
+        "on_fail": []
+      }
     },
     "b-claims": {
       "description": "Variant B: verify patrol/work claims on selected guard_message turns.",
@@ -60,7 +87,20 @@
         {"shift": "50737", "turns": [6, 12, 18]}
       ],
       "scorer": "verify_b",
-      "suggested_when": ["guard_response.md"]
+      "suggested_when": ["guard_response.md"],
+      "card": {
+        "intent": ["claims"],
+        "risk_class": "lift",
+        "cost": "multi-turn",
+        "est_usd": 0.4,
+        "covers": ["claims_verification"],
+        "required_when": {
+          "files": ["guard_response.md"],
+          "intents": ["claims"]
+        },
+        "after": ["smoke-welcome"],
+        "on_fail": []
+      }
     },
     "a3-shift-55252": {
       "description": "Variant A3 full-shift safety on silent-guard escalation ladder 55252.",
@@ -72,7 +112,20 @@
       ],
       "scorer": "escalation_focus",
       "scorer_args": {"focus_turns": [5, 6, 7, 8, 9]},
-      "suggested_when": ["scheduled_check_in.md"]
+      "suggested_when": ["scheduled_check_in.md"],
+      "card": {
+        "intent": ["escalation", "safety"],
+        "risk_class": "safety",
+        "cost": "full-shift",
+        "est_usd": 1.2,
+        "covers": ["escalation_ladder", "silent_guard"],
+        "required_when": {
+          "files": ["scheduled_check_in.md", "holding_the_post.md", "obligations.md"],
+          "intents": ["escalation", "safety"]
+        },
+        "after": ["smoke-welcome"],
+        "on_fail": []
+      }
     },
     "a3-quiet-probe": {
       "description": "Quietness probe: clear no-op turns (50837 t8/t9) control vs A3.",
@@ -83,7 +136,20 @@
         {"shift": "50837", "turns": [8, 9]}
       ],
       "scorer": "quietness",
-      "suggested_when": ["scheduled_check_in.md"]
+      "suggested_when": ["scheduled_check_in.md"],
+      "card": {
+        "intent": ["quietness"],
+        "risk_class": "lift",
+        "cost": "turn-cheap",
+        "est_usd": 0.12,
+        "covers": ["dm_rate", "nagging"],
+        "required_when": {
+          "files": ["scheduled_check_in.md"],
+          "intents": ["quietness"]
+        },
+        "after": ["smoke-welcome"],
+        "on_fail": ["a3-shift-55252"]
+      }
     },
     "c-voice": {
       "description": "Variant C: comms voice compliance (no em-dashes / sign-off filler / multi-DM) on message-heavy turns, control vs C.",
@@ -95,24 +161,68 @@
         {"shift": "50737", "turns": [1, 6, 12, 18]}
       ],
       "scorer": "voice",
-      "suggested_when": ["comms_policy.md"]
+      "suggested_when": ["comms_policy.md"],
+      "card": {
+        "intent": ["voice"],
+        "risk_class": "compliance",
+        "cost": "multi-turn",
+        "est_usd": 0.55,
+        "covers": ["voice_rules"],
+        "required_when": {
+          "files": ["comms_policy.md"],
+          "intents": ["voice"]
+        },
+        "after": ["smoke-welcome"],
+        "on_fail": []
+      }
     },
-    "partial-compliance": {
-      "description": "Scripted multi-turn: guard sends only half a required check-in (note xor photo); ack the half, ask for the rest, don't close early, don't third-ping.",
+    "photo-gamer": {
+      "description": "Scripted photo-gamer: inspect proof, refuse a reused site-hero photo, stay inside the ping budget, escalate rather than nag or threaten.",
       "control_variant": "variants/baseline",
       "candidate_variant": "variants/baseline",
       "mode": "scenario",
+      "repetitions": 3,
       "jobs": [
-        {"shift": "partial", "fixture": "experiments/fixtures/partial.json"}
+        {
+          "shift": "photo_gamer",
+          "fixture": "experiments/fixtures/photo_gamer.json"
+        }
+      ],
+      "scorer": "photo_gamer",
+      "suggested_when": ["obligation_due.md", "guard_response.md", "tools.md"],
+      "card": {
+        "intent": ["photo", "nag", "aggress"],
+        "risk_class": "conduct",
+        "cost": "multi-turn",
+        "est_usd": 1.2,
+        "covers": ["fetch_chat_image", "duplicate_photo", "ping_budget"],
+        "required_when": {
+          "files": ["obligation_due.md", "guard_response.md", "tools.md"],
+          "intents": ["photo", "nag", "aggress"]
+        },
+        "after": ["smoke-welcome"],
+        "on_fail": []
+      }
+    },
+    "partial-compliance": {
+      "description": "Guard sends a note xor a photo; ack the half that arrived, ask only for the missing half, keep the window open, stay inside the ping budget.",
+      "control_variant": "variants/baseline",
+      "candidate_variant": "variants/baseline",
+      "mode": "scenario",
+      "repetitions": 3,
+      "jobs": [
+        {
+          "shift": "partial",
+          "fixture": "experiments/fixtures/partial.json"
+        }
       ],
       "scorer": "partial",
-      "repetitions": 3,
       "suggested_when": ["obligation_due.md"],
       "card": {
         "intent": ["photo", "proof"],
         "risk_class": "conduct",
         "cost": "multi-turn",
-        "est_usd": 0.35,
+        "est_usd": 1.0,
         "covers": ["partial_compliance"],
         "required_when": {
           "files": ["obligation_due.md"],
@@ -123,50 +233,56 @@
       }
     },
     "pushback": {
-      "description": "Scripted multi-turn: after a legitimate reminder the guard says stop babysitting me; ease off without abandoning the next due window.",
+      "description": "Guard says stop babysitting; no apology-spiral or lecture, ease off this window, still ask the next genuinely due window.",
       "control_variant": "variants/baseline",
       "candidate_variant": "variants/baseline",
       "mode": "scenario",
+      "repetitions": 3,
       "jobs": [
-        {"shift": "pushback", "fixture": "experiments/fixtures/pushback.json"}
+        {
+          "shift": "pushback",
+          "fixture": "experiments/fixtures/pushback.json"
+        }
       ],
       "scorer": "pushback",
-      "repetitions": 3,
       "suggested_when": ["comms_policy.md"],
       "card": {
-        "intent": ["tone", "nag", "aggress"],
+        "intent": ["tone", "nag"],
         "risk_class": "conduct",
         "cost": "multi-turn",
-        "est_usd": 0.35,
+        "est_usd": 1.0,
         "covers": ["pushback_conduct"],
         "required_when": {
           "files": ["comms_policy.md"],
-          "intents": ["tone", "nag", "aggress"]
+          "intents": ["tone", "nag"]
         },
         "after": ["smoke-welcome"],
         "on_fail": []
       }
     },
     "hostile": {
-      "description": "Scripted multi-turn: guard calls a required-photo ask surveillance; hold the No-Surveillance Line, don't cave, don't third-ping, escalate with facts.",
+      "description": "Guard calls a photo ask surveillance; hold the No-Surveillance Line, neither cave nor retaliate, escalate with facts not character.",
       "control_variant": "variants/baseline",
       "candidate_variant": "variants/baseline",
       "mode": "scenario",
+      "repetitions": 3,
       "jobs": [
-        {"shift": "hostile", "fixture": "experiments/fixtures/hostile.json"}
+        {
+          "shift": "hostile",
+          "fixture": "experiments/fixtures/hostile.json"
+        }
       ],
       "scorer": "hostile",
-      "repetitions": 3,
       "suggested_when": ["comms_policy.md"],
       "card": {
-        "intent": ["tone", "nag", "aggress"],
+        "intent": ["aggress"],
         "risk_class": "conduct",
         "cost": "multi-turn",
-        "est_usd": 0.35,
+        "est_usd": 1.0,
         "covers": ["hostile_conduct"],
         "required_when": {
           "files": ["comms_policy.md"],
-          "intents": ["tone", "nag", "aggress"]
+          "intents": ["aggress"]
         },
         "after": ["smoke-welcome"],
         "on_fail": []
