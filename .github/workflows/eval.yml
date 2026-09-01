@@ -30,6 +30,7 @@ jobs:
         run: |
           python calvis.py ls
           python calvis.py t cl -n
+          python calvis.py go -n --files scheduled_check_in.md
           python calvis.py why vb -n
 
   live-smoke:
