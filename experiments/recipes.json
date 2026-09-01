@@ -6,6 +6,10 @@
     "miner": {
       "model": "gpt-5.6-luna",
       "adapter": "openai"
+    },
+    "judge": {
+      "adapter": "openai",
+      "model": "gpt-5.6-luna"
     }
   },
   "aliases": {
@@ -13,14 +17,16 @@
     "cl": "b-claims",
     "es": "a3-shift-55252",
     "qt": "a3-quiet-probe",
-    "vo": "c-voice"
+    "vo": "c-voice",
+    "ag": "photo-gamer"
   },
   "alias_help": {
     "wl": "welcome / smoke sanity",
     "cl": "claims verification (Variant B)",
     "es": "escalation safety full-shift (A3)",
     "qt": "quietness probe (A3)",
-    "vo": "voice compliance (Variant C)"
+    "vo": "voice compliance (Variant C)",
+    "ag": "photo-gamer process probe (scripted guard)"
   },
   "analyze_targets": {
     "va": "variants/variant_a",
@@ -155,6 +161,34 @@
         "required_when": {
           "files": ["comms_policy.md"],
           "intents": ["voice"]
+        },
+        "after": ["smoke-welcome"],
+        "on_fail": []
+      }
+    },
+    "photo-gamer": {
+      "description": "Scripted photo-gamer: inspect proof, refuse a reused site-hero photo, stay inside the ping budget, escalate rather than nag or threaten.",
+      "control_variant": "variants/baseline",
+      "candidate_variant": "variants/baseline",
+      "mode": "scenario",
+      "repetitions": 3,
+      "jobs": [
+        {
+          "shift": "photo_gamer",
+          "fixture": "experiments/fixtures/photo_gamer.json"
+        }
+      ],
+      "scorer": "photo_gamer",
+      "suggested_when": ["obligation_due.md", "guard_response.md", "tools.md"],
+      "card": {
+        "intent": ["photo", "nag", "aggress"],
+        "risk_class": "conduct",
+        "cost": "multi-turn",
+        "est_usd": 1.2,
+        "covers": ["fetch_chat_image", "duplicate_photo", "ping_budget"],
+        "required_when": {
+          "files": ["obligation_due.md", "guard_response.md", "tools.md"],
+          "intents": ["photo", "nag", "aggress"]
         },
         "after": ["smoke-welcome"],
         "on_fail": []

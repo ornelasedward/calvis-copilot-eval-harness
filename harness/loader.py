@@ -163,6 +163,8 @@ class Shift:
     start: datetime = field(init=False)
     end: datetime = field(init=False)
     timezone: str = field(init=False)
+    # Optional scripted-guard section (synthetic scenario fixtures only).
+    script: dict | None = None
 
     def __post_init__(self) -> None:
         self.start = parse_ts(self.context["start"])
@@ -180,9 +182,10 @@ def load_shift(path: str | Path) -> Shift:
         id=str(raw["shift"]["id"]),
         path=path,
         context=raw["shift"],
-        events=EventStore(raw["events"]),
-        baseline=raw["baseline"],
-        fixtures=FixtureStore(raw["baseline"]),
+        events=EventStore(raw.get("events") or []),
+        baseline=raw.get("baseline") or [],
+        fixtures=FixtureStore(raw.get("baseline") or []),
+        script=raw.get("script"),
     )
 
 
