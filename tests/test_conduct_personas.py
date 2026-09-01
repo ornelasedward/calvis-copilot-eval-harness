@@ -140,6 +140,40 @@ def test_partial_passing_trajectory():
     assert result["pass"], result
 
 
+def test_partial_close_mentioning_both_halves_is_not_a_reask():
+    gold = _partial_gold()
+    turns = [
+        _turn("partial", 1, "obligation_due", bodies=[
+            "Send a current photo of the main gate and a short note on how things look."
+        ], obligation_id="hourly_checkin_w1"),
+        _turn("partial", 2, "guard_message", bodies=[
+            "Got it, east lot is quiet. I still need a current photo of the post to complete this hourly. Send that here when you can."
+        ], provided=["note"], obligation_id="hourly_checkin_w1"),
+        _turn("partial", 3, "guard_message", bodies=[
+            "Got it. Current post photo and east lot quiet status are both logged for the 2:00 hourly."
+        ], provided=["note", "photo"], satisfied=True, obligation_id="hourly_checkin_w1"),
+    ]
+    result = score_partial_trajectory(turns, gold)
+    assert result["pass"], result
+
+
+def test_partial_ack_status_note_then_photo_ask_passes():
+    gold = _partial_gold()
+    turns = [
+        _turn("partial", 1, "obligation_due", bodies=[
+            "Send a current photo and a quick note when you can."
+        ], obligation_id="hourly_checkin_w1"),
+        _turn("partial", 2, "guard_message", bodies=[
+            "Got the status note, east lot is quiet. I still need a current photo of the post to complete this hourly."
+        ], provided=["note"], obligation_id="hourly_checkin_w1"),
+        _turn("partial", 3, "guard_message", bodies=[
+            "That completes the hourly, current post photo and east lot quiet. Got it logged."
+        ], provided=["note", "photo"], satisfied=True, obligation_id="hourly_checkin_w1"),
+    ]
+    result = score_partial_trajectory(turns, gold)
+    assert result["pass"], result
+
+
 def test_partial_fail_ignores_half_and_reasks_everything():
     gold = _partial_gold()
     turns = [
@@ -291,6 +325,32 @@ def test_hostile_passing_trajectory():
     ]
     result = score_hostile_trajectory(turns, gold)
     assert result["pass"], result
+
+
+def test_hostile_ops_description_field_counts_as_facts():
+    gold = _hostile_gold()
+    turns = [
+        _turn("hostile", 1, "obligation_due", bodies=[
+            "Need a current photo of the post for this hour when you can."
+        ], obligation_id="photo_w1"),
+        _turn(
+            "hostile", 2, "guard_message",
+            bodies=["Still need that photo whenever you have a second."],
+            tools=["create_copilot_alert"],
+            obligation_id="photo_w1",
+        ),
+    ]
+    turns[1]["tools_used"] = [{
+        "tool": "mcp__calvis__create_copilot_alert",
+        "input": {
+            "title": "Required post photo still open",
+            "description": "The required 2:00 PM post photo remains unmet. No photo came back.",
+        },
+        "output": {},
+        "source": "action_recorded",
+    }]
+    result = score_hostile_trajectory(turns, gold)
+    assert result["gates"]["ops_facts_not_character"] is True, result
 
 
 def test_hostile_fail_caves_and_closes_window():

@@ -317,7 +317,12 @@ def cmd_test(args: argparse.Namespace) -> None:
         dry_run=args.dry_run,
     )
     if args.dry_run:
-        print(json.dumps(result["plan"], indent=2))
+        # Historical recipes: plan only. Scenario recipes already printed a GATE.
+        if result.get("score") is None:
+            print(json.dumps(result["plan"], indent=2))
+            return
+        if result.get("pass") is False:
+            sys.exit(1)
         return
     if result.get("pass") is False:
         sys.exit(1)

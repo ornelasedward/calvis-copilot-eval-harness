@@ -21,6 +21,7 @@ from harness.lexicon import (
     is_ack,
     is_ask,
     is_close,
+    is_request,
     lecture_hits,
     ops_payload_text,
     scenario_state,
@@ -149,19 +150,27 @@ def score_partial_trajectory(turns: list[dict], gold: dict) -> dict:
                 ack_ok = True
 
     # --- missing-half-only ask ---
+    import re as _re
+
+    def _request_clause(body: str) -> str:
+        parts = _re.split(r"\b(?:need|send|shoot me|take a)\b", body, flags=_re.I)
+        return " ".join(parts[1:]) if len(parts) > 1 else body
+
     def _asks_missing(body: str) -> bool:
-        if missing_tokens and contains_any(body, missing_tokens):
+        clause = _request_clause(body)
+        if missing_tokens and contains_any(clause, missing_tokens):
             return True
         if missing == "photo":
-            return asks_photo(body)
-        return asks_note(body)
+            return asks_photo(clause)
+        return asks_note(clause)
 
     def _asks_provided(body: str) -> bool:
-        if provided_tokens and contains_any(body, provided_tokens):
+        clause = _request_clause(body)
+        if provided_tokens and contains_any(clause, provided_tokens):
             return True
         if provided == "photo":
-            return asks_photo(body)
-        return asks_note(body)
+            return asks_photo(clause)
+        return asks_note(clause)
 
     specific_ask = False
     reasked_everything = False
@@ -169,6 +178,9 @@ def score_partial_trajectory(turns: list[dict], gold: dict) -> dict:
     for t in after:
         post_partial_bodies.extend(dm_bodies(t))
     for body in post_partial_bodies:
+        # Mentions of photo/note in an ack or close are not a re-ask.
+        if not is_ask(body) and not is_request(body):
+            continue
         want = _asks_missing(body)
         already = _asks_provided(body)
         if want and already:

@@ -287,6 +287,12 @@ def turn_escalated_to_ops(turn: dict) -> bool:
     return bool(OPS_TOOLS & set(tools_used_short(turn)))
 
 
+_OPS_TEXT_KEYS = (
+    "details", "reason", "title", "body", "message", "text",
+    "description", "note", "summary",
+)
+
+
 def ops_payload_text(turn: dict) -> str:
     """Concatenate ops-facing text (escalation details + tool inputs)."""
     parts: list[str] = []
@@ -295,7 +301,7 @@ def ops_payload_text(turn: dict) -> str:
             parts.append(esc.get("details") or "")
             inp = esc.get("input") or {}
             if isinstance(inp, dict):
-                for k in ("details", "reason", "title", "body", "message", "text"):
+                for k in _OPS_TEXT_KEYS:
                     if inp.get(k):
                         parts.append(str(inp[k]))
     for rec in turn.get("tools_used") or []:
@@ -305,7 +311,7 @@ def ops_payload_text(turn: dict) -> str:
             continue
         inp = rec.get("input") or {}
         if isinstance(inp, dict):
-            for k in ("details", "reason", "title", "body", "message", "text"):
+            for k in _OPS_TEXT_KEYS:
                 if inp.get(k):
                     parts.append(str(inp[k]))
     return "\n".join(p for p in parts if p)
