@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pytest
@@ -247,9 +248,18 @@ def test_decide_uses_spec_rates_for_lift_regress_and_no_headroom():
 
 
 def test_dry_run_loop_writes_plan(tmp_path):
+    """`-n` is a complete API-free loop, and it writes only under `root`."""
+    repo_variants = sorted(p.name for p in (Path(__file__).resolve().parents[1] / "variants").iterdir())
+    repo_recipes = (Path(__file__).resolve().parents[1] / "experiments" / "recipes.json").read_bytes()
+
     cfg = LoopConfig(shift_id="50737", dry_run=True)
-    result = run_loop(cfg, root=tmp_path)
-    assert result["decision"] is None
+    result = run_loop(cfg, root=tmp_path, printer=lambda _s: None)
+    assert result["decision"] is not None
+    assert result["decision"]["action"] in {"keep", "revert", "next_card", "stop"}
+    # dry mode wrote its auto variant and any minted recipe under tmp, not the repo
+    assert sorted(p.name for p in (Path(__file__).resolve().parents[1] / "variants").iterdir()) == repo_variants
+    assert (Path(__file__).resolve().parents[1] / "experiments" / "recipes.json").read_bytes() == repo_recipes
+    assert (tmp_path / "variants").exists()
     plan = result["plan"]
     assert plan["status"] == "architecture"
     assert [s["session"] for s in plan["pipeline"]] == ["A", "B", "C", "D", "done"]
@@ -279,4 +289,14 @@ def test_live_loop_has_no_session_stubs_left(tmp_path, monkeypatch):
     monkeypatch.setattr(patch, "_llm_complete", no_api)
     cfg = LoopConfig(shift_id="50737", dry_run=False)
     with pytest.raises(PatchRefused):
-        run_loop(cfg, root=tmp_path)
+        run_loop(cfg, root=tmp_path, printer=lambda _s: None)
+
+
+def test_loop_stage_functions_are_injectable(tmp_path):
+    """Sessions A–D are defaults, not hard dependencies (that is what lets
+    Session E be built and tested while B/C are still landing)."""
+    import inspect
+
+    params = inspect.signature(run_loop).parameters
+    for name in ("mine_fn", "diagnose_fn", "patch_fn", "evaluate_fn", "decide_fn"):
+        assert name in params

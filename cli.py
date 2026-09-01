@@ -411,10 +411,10 @@ def cmd_go(args: argparse.Namespace) -> None:
 
 
 def cmd_loop(args: argparse.Namespace) -> None:
-    """Eval-loop agent. Dry-run prints architecture plan (LOOP.md). Live needs Sessions A–D."""
+    """Eval-loop agent (LOOP.md). `-n` is API-free: fixtures only, no model calls."""
     import json
 
-    from harness.agent.orchestrator import run_loop
+    from harness.agent.orchestrator import format_run_summary, run_loop
     from harness.agent.types import LoopConfig
 
     cfg = LoopConfig(
@@ -422,12 +422,20 @@ def cmd_loop(args: argparse.Namespace) -> None:
         dry_run=bool(args.dry_run),
         adapter=getattr(args, "adapter", None) or "openai",
         model=getattr(args, "model", None) or "gpt-5.6-sol",
+        max_iterations=int(getattr(args, "max_iterations", None) or 3),
     )
-    result = run_loop(cfg)
+    result = run_loop(
+        cfg,
+        budget_usd=getattr(args, "budget", None),
+        mint=not getattr(args, "no_mint", False),
+        compound=bool(getattr(args, "compound", False)),
+    )
     print(json.dumps(result["plan"], indent=2))
     print(f"\nwrote {result['out_dir']}/manifest.json")
+    print("\n=== run ===")
+    print(format_run_summary(result))
     if result.get("decision"):
-        print("\n=== decision ===")
+        print("\n=== last decision ===")
         print(json.dumps(result["decision"], indent=2))
 
 
@@ -465,6 +473,19 @@ def cmd_sim(args: argparse.Namespace) -> None:
     print(json.dumps(score, indent=2, default=str))
     print(f"GATE: {'PASS' if score.get('pass') else 'FAIL'}")
     if not score.get("pass"):
+        sys.exit(1)
+
+
+def cmd_promote(args: argparse.Namespace) -> None:
+    """Human-invoked: copy a kept auto-variant to a named variant dir."""
+    from harness.agent.mint import promote_variant
+
+    out = promote_variant(
+        args.auto_variant,
+        args.named_variant,
+        yes=bool(args.yes),
+    )
+    if not out["promoted"]:
         sys.exit(1)
 
 
@@ -796,9 +817,40 @@ def main(argv: list[str] | None = None) -> None:
         "-n",
         "--dry-run",
         action="store_true",
-        help="Print architecture plan only; no API and no Session A–D",
+        help="API-free: deterministic diagnose + stored fixture scores",
+    )
+    lp.add_argument(
+        "--max-iterations",
+        type=int,
+        default=3,
+        help="Cap on mine→patch→score→decide cycles (LOOP.md hard rule 7)",
+    )
+    lp.add_argument(
+        "--budget",
+        type=float,
+        default=None,
+        help="USD budget; the loop stops with reason 'budget' before exceeding it",
+    )
+    lp.add_argument(
+        "--no-mint",
+        action="store_true",
+        help="Do not append a regression recipe to experiments/recipes.json on a keep",
+    )
+    lp.add_argument(
+        "--compound",
+        action="store_true",
+        help="Continue past a keep with the kept variant as the new parent/control",
     )
     lp.set_defaults(func=cmd_loop)
+
+    pr = sub.add_parser(
+        "promote",
+        help="Copy a kept auto-variant to a named variant (prints diff, asks first)",
+    )
+    pr.add_argument("auto_variant", help="e.g. variants/auto_20250101T000000")
+    pr.add_argument("named_variant", help="e.g. variant_d (or variants/variant_d)")
+    pr.add_argument("--yes", action="store_true", help="Skip the confirmation prompt")
+    pr.set_defaults(func=cmd_promote)
 
     args = p.parse_args(argv)
     args.func(args)
