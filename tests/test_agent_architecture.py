@@ -82,10 +82,30 @@ def test_diagnose_skip_llm_picks_safety_before_lift():
     assert d.spec.require_escalation is True
 
 
-def test_diagnose_llm_path_is_session_b():
-    with pytest.raises(SessionTodo) as ei:
-        diagnose([_card()], skip_llm=False)
-    assert ei.value.session == "B"
+def test_diagnose_llm_path_is_implemented_and_injectable():
+    """Session B landed: the LLM picks the card, the catalog still owns the rest.
+
+    Full coverage of the post-validator lives in tests/test_agent_diagnose.py.
+    """
+    import json
+
+    card = _card("photo_without_inspect", "conduct", "50737", [23])
+    reply = json.dumps(
+        {
+            "card_id": card.id,
+            "target_file": "core/tools.md",
+            "scorer": "photo_inspect",
+            "must_improve": "inspect the [photo] before treating it as proof",
+            "must_preserve": ["reply to every guard_message"],
+            "must_not_happen": ["a second photo ask on the same window"],
+            "rationale": "the photo landed and no fetch_chat_image followed",
+        }
+    )
+    d = diagnose([card], skip_llm=False, call_llm=lambda system, user: reply)
+    assert d.card_id == card.id
+    assert d.target_file == "core/tools.md"
+    assert d.scorer == "photo_inspect"  # catalog value, not an LLM value
+    assert "pass" not in d.to_dict()
 
 
 def test_mine_is_implemented_and_patch_is_session_todo():
@@ -226,8 +246,20 @@ def test_dry_run_loop_writes_plan(tmp_path):
     assert "unverified_claim" in manifest
 
 
-def test_live_loop_runs_the_miner_then_stops_at_session_b(tmp_path):
+def test_live_loop_gets_past_the_diagnostician(tmp_path, monkeypatch):
+    """Sessions A and B are live, so the loop now stops at a later session.
+
+    The transport is stubbed to raise, so this can never reach the network even
+    with an API key in the environment: diagnose() falls back to the
+    deterministic pick and the loop moves on.
+    """
+    import harness.agent.diagnose as diag
+
+    def no_api(*args, **kwargs):
+        raise RuntimeError("no API calls in tests")
+
+    monkeypatch.setattr(diag, "_llm_complete", no_api)
     cfg = LoopConfig(shift_id="50737", dry_run=False)
     with pytest.raises(SessionTodo) as ei:
         run_loop(cfg, root=tmp_path)
-    assert ei.value.session == "B"
+    assert ei.value.session in {"C", "D"}
