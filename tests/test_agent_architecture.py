@@ -88,10 +88,12 @@ def test_diagnose_llm_path_is_session_b():
     assert ei.value.session == "B"
 
 
-def test_mine_and_patch_are_session_todos():
-    with pytest.raises(SessionTodo) as a:
-        mine_shift("50737")
-    assert a.value.session == "A"
+def test_mine_is_implemented_and_patch_is_session_todo():
+    # Session A is live: cards come from the shift JSON, no API call.
+    cards = mine_shift("50737")
+    assert cards and all(c.source == "json" for c in cards)
+    for c in cards:
+        c.validate()
     d = diagnose_deterministic([_card()])
     with pytest.raises(SessionTodo) as c:
         apply_patch(d)
@@ -224,8 +226,8 @@ def test_dry_run_loop_writes_plan(tmp_path):
     assert "unverified_claim" in manifest
 
 
-def test_live_loop_stops_at_session_a(tmp_path):
+def test_live_loop_runs_the_miner_then_stops_at_session_b(tmp_path):
     cfg = LoopConfig(shift_id="50737", dry_run=False)
     with pytest.raises(SessionTodo) as ei:
         run_loop(cfg, root=tmp_path)
-    assert ei.value.session == "A"
+    assert ei.value.session == "B"
