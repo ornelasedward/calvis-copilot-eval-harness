@@ -300,7 +300,7 @@ def cmd_recipes(_: argparse.Namespace) -> None:
     for t in list_analyze_targets():
         print(f"  {t['code']:4}  {t['meaning']:36}  {t['path']}")
 
-    print("\nExamples:  .\\cx t cl -n    .\\cx t es    .\\cx why v3 -n")
+    print("\nExamples:  .\\cx t cl -n    .\\cx go -n --files scheduled_check_in.md    .\\cx t es")
 
 
 def cmd_test(args: argparse.Namespace) -> None:
@@ -320,6 +320,73 @@ def cmd_test(args: argparse.Namespace) -> None:
         print(json.dumps(result["plan"], indent=2))
         return
     if result.get("pass") is False:
+        sys.exit(1)
+
+
+def cmd_go(args: argparse.Namespace) -> None:
+    """Plan (and optionally execute) recipes from changed files / intent."""
+    from harness.recipes import execute_recipe
+    from harness.router import (
+        compile_plan,
+        confirm_execute,
+        discover_changed_files,
+        execute_plan,
+        format_plan_table,
+        resolve_variant_dir,
+        save_plan,
+    )
+
+    files_override = None
+    if args.files is not None:
+        files_override = [p.strip() for p in str(args.files).split(",") if p.strip()]
+
+    variant_dir = None
+    variant_path = None
+    if args.variant:
+        variant_dir = resolve_variant_dir(args.variant)
+        if variant_dir is not None:
+            try:
+                variant_path = variant_dir.relative_to(ROOT).as_posix()
+            except ValueError:
+                variant_path = str(variant_dir)
+
+    changed = discover_changed_files(
+        variant_dir,
+        files_override=files_override,
+        root=ROOT,
+    )
+    plan = compile_plan(
+        changed_files=changed,
+        intent=args.intent,
+        budget=args.budget,
+        skip_safety_i_know=bool(args.skip_safety_i_know),
+    )
+    print(format_plan_table(plan), flush=True)
+    for warning in plan.get("warnings") or []:
+        print(warning, file=sys.stderr, flush=True)
+    plan_path = save_plan(plan, ROOT / "runs")
+    print(f"wrote {plan_path}")
+
+    if args.plan_only:
+        return
+    if not confirm_execute(yes=bool(args.yes)):
+        print("aborted")
+        sys.exit(1)
+
+    def _exec(name: str) -> dict:
+        return execute_recipe(
+            name,
+            run_jobs_fn=run_jobs,
+            adapter=args.adapter,
+            model=args.model,
+            candidate_variant=variant_path,
+            repeat=1,
+            dry_run=False,
+        )
+
+    outcome = execute_plan(plan, execute_fn=_exec)
+    failed = any(r.get("pass") is False for r in outcome.get("results") or [])
+    if outcome.get("halted") or failed:
         sys.exit(1)
 
 
@@ -393,6 +460,39 @@ def main(argv: list[str] | None = None) -> None:
     t.add_argument("--repeat", type=int, default=1)
     t.add_argument("--dry-run", action="store_true", help="Print plan only; no API calls")
     t.set_defaults(func=cmd_test)
+
+    g = sub.add_parser(
+        "go",
+        help="Plan and run evals from changed files / intent (compiler owns select/order/stop)",
+    )
+    g.add_argument(
+        "variant",
+        nargs="?",
+        default=None,
+        help="Candidate variant dir, variants/<name>, or analyze code (v3/vb/vc)",
+    )
+    g.add_argument(
+        "-n",
+        "--plan-only",
+        action="store_true",
+        help="Print coverage table, save plan, exit (no API calls)",
+    )
+    g.add_argument(
+        "--files",
+        default=None,
+        help="Comma-separated changed-file override (e.g. scheduled_check_in.md)",
+    )
+    g.add_argument("--intent", default=None, help="Free-text intent; keyword match only")
+    g.add_argument("--budget", type=float, default=None, help="USD cap; trims should_run only")
+    g.add_argument("--yes", "-y", action="store_true", help="Skip confirm and execute the plan")
+    g.add_argument(
+        "--skip-safety-i-know",
+        action="store_true",
+        help="Allow skipping safety must_run items (prints a loud warning)",
+    )
+    g.add_argument("--adapter", choices=["anthropic", "openai"], default=None)
+    g.add_argument("--model", default=None)
+    g.set_defaults(func=cmd_go)
 
     a = sub.add_parser(
         "analyze",

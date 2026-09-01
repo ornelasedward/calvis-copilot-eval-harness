@@ -29,9 +29,18 @@ Set API keys in `.env`, then use the **short** launcher from the repo root:
 | `cl` | claims verification (Variant B) |
 | `es` | escalation safety full-shift (A3) |
 | `qt` | quietness probe (A3) |
-| `va`/`v2`/`v3`/`vb` | analyze Variant A / A2 / A3 / B |
+| `vo` | voice compliance (Variant C) |
+| `va`/`v2`/`v3`/`vb`/`vc` | analyze Variant A / A2 / A3 / B / C |
 
-Same via Python: `py calvis.py t cl` / `py calvis.py why v3`.
+Plan from changed files (offline, no API):
+
+```bash
+.\cx go -n --files scheduled_check_in.md
+.\cx go v3 -n
+.\cx go v3 --intent "escalation" --budget 2 --yes
+```
+
+`cx t <alias>` is unchanged. Same via Python: `py calvis.py t cl` / `py calvis.py go -n` / `py calvis.py why v3`.
 
 ## CI
 

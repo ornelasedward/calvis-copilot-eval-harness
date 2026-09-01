@@ -33,13 +33,17 @@ def _help() -> None:
 
   cx | cx ls                 list codes
   cx t <code> [-n]           run test recipe
+  cx go -n                   plan only (coverage table, save, exit)
+  cx go [variant] [--yes]    plan, confirm, execute in order
   cx why <code> [-n]         analyze prompt vs baseline
 
-  Test codes:   wl=welcome  cl=claims  es=escalation  qt=quietness
-  Why codes:    va=A  v2=A2  v3=A3  vb=B
+  Test codes:   wl=welcome  cl=claims  es=escalation  qt=quietness  vo=voice
+  Why codes:    va=A  v2=A2  v3=A3  vb=B  vc=C
 
 Examples:
   .\\cx t cl -n
+  .\\cx go -n --files scheduled_check_in.md
+  .\\cx go v3 --intent "escalation" --yes
   .\\cx t es
   .\\cx why v3 -n
 """
@@ -86,6 +90,12 @@ def main(argv: list[str] | None = None) -> None:
                 dry_run=dry,
             )
         )
+        return
+
+    if cmd == "go":
+        from cli import main as cli_main
+
+        cli_main(["go", *rest])
         return
 
     if cmd in ("why", "analyze", "a"):
