@@ -260,20 +260,23 @@ def test_dry_run_loop_writes_plan(tmp_path):
     assert "unverified_claim" in manifest
 
 
-def test_live_loop_gets_past_the_diagnostician(tmp_path, monkeypatch):
-    """Sessions A and B are live, so the loop now stops at a later session.
+def test_live_loop_has_no_session_stubs_left(tmp_path, monkeypatch):
+    """Sessions A-D are all live: the loop never raises SessionTodo.
 
-    The transport is stubbed to raise, so this can never reach the network even
-    with an API key in the environment: diagnose() falls back to the
-    deterministic pick and the loop moves on.
+    Both model transports are stubbed to raise, so this can never reach the
+    network even with an API key in the environment: diagnose() falls back to
+    the deterministic pick, then the patcher refuses (no model, no edit) and
+    the loop surfaces that refusal — not a stub.
     """
     import harness.agent.diagnose as diag
+    import harness.agent.patch as patch
+    from harness.agent.patch import PatchRefused
 
     def no_api(*args, **kwargs):
         raise RuntimeError("no API calls in tests")
 
     monkeypatch.setattr(diag, "_llm_complete", no_api)
+    monkeypatch.setattr(patch, "_llm_complete", no_api)
     cfg = LoopConfig(shift_id="50737", dry_run=False)
-    with pytest.raises(SessionTodo) as ei:
+    with pytest.raises(PatchRefused):
         run_loop(cfg, root=tmp_path)
-    assert ei.value.session in {"C", "D"}
