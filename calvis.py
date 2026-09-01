@@ -34,6 +34,7 @@ def _help() -> None:
   cx | cx ls                 list codes
   cx t <code> [-n]           run test recipe
   cx go -n                   plan only (coverage table, save, exit)
+  cx go -n --rank            compiler plan + optional LLM ranker (not a verdict)
   cx go [variant] [--yes]    plan, confirm, execute in order
   cx why <code> [-n]         analyze prompt vs baseline
 
@@ -43,6 +44,7 @@ def _help() -> None:
 Examples:
   .\\cx t cl -n
   .\\cx go -n --files scheduled_check_in.md
+  .\\cx go v3 -n --rank
   .\\cx go v3 --intent "escalation" --yes
   .\\cx t es
   .\\cx why v3 -n

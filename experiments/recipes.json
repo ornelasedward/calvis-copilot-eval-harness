@@ -5,8 +5,7 @@
     "control_variant": "variants/baseline",
     "router": {
       "model": "gpt-4.1-mini",
-      "adapter": "openai",
-      "budget": 4
+      "adapter": "openai"
     }
   },
   "aliases": {

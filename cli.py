@@ -361,11 +361,26 @@ def cmd_go(args: argparse.Namespace) -> None:
         budget=args.budget,
         skip_safety_i_know=bool(args.skip_safety_i_know),
     )
-    print(format_plan_table(plan), flush=True)
+
+    if getattr(args, "rank", False):
+        from harness.router import format_ranked_go_output, rank_plan
+
+        ranked = rank_plan(
+            plan,
+            changed_files=changed,
+            intent=args.intent,
+            variant_dir=variant_dir,
+        )
+        print(format_ranked_go_output(plan, ranked), flush=True)
+        plan = ranked.ranked_plan
+        plan_path = save_plan(plan, ROOT / "runs")
+        print(f"wrote {plan_path}")
+    else:
+        print(format_plan_table(plan), flush=True)
+        plan_path = save_plan(plan, ROOT / "runs")
+        print(f"wrote {plan_path}")
     for warning in plan.get("warnings") or []:
         print(warning, file=sys.stderr, flush=True)
-    plan_path = save_plan(plan, ROOT / "runs")
-    print(f"wrote {plan_path}")
 
     if args.plan_only:
         return
@@ -484,6 +499,11 @@ def main(argv: list[str] | None = None) -> None:
     )
     g.add_argument("--intent", default=None, help="Free-text intent; keyword match only")
     g.add_argument("--budget", type=float, default=None, help="USD cap; trims should_run only")
+    g.add_argument(
+        "--rank",
+        action="store_true",
+        help="Optional LLM ranking after the compiler (catalog still constrains; never a verdict)",
+    )
     g.add_argument("--yes", "-y", action="store_true", help="Skip confirm and execute the plan")
     g.add_argument(
         "--skip-safety-i-know",

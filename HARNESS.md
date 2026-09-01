@@ -39,6 +39,7 @@ Plan from changed files (offline, no API):
 ```bash
 .\cx go -n --files scheduled_check_in.md
 .\cx go v3 -n
+.\cx go v3 -n --rank --intent "quietness without losing escalations"
 .\cx go v3 --intent "escalation" --budget 2 --yes
 ```
 
@@ -70,13 +71,14 @@ Deterministic scorers own **PASS/FAIL**. The advisor only narrates. The optional
 `cx go --rank` ranker only reorders/drops/pulls recipe cards; it is never a verdict.
 
 `cx go` is the deterministic compiler: it reads recipe cards + the prompt diff and
-emits `{must_run, should_run, skip, order, budget}`. `smoke-welcome` stays first.
+emits `{must_run, should_run, skip, order, budget_usd}`. `smoke-welcome` stays first.
 `--rank` (off by default) asks a **different** model (`defaults.router.model` in
 `experiments/recipes.json`, not the copilot under test) to propose a revised plan.
 A code validator then re-inserts dropped `must_run`, strips unknown ids, re-applies
 the budget cap, and keeps `smoke-welcome` first. On LLM/JSON failure after one retry
 the compiler plan is used and the fallback is noted. `cx go -n --rank` prints both
-plans and a diff; omitting `--rank` is compiler-only.
+plans and a diff; omitting `--rank` is compiler-only. The ranker never declares
+pass/fail.
 
 ## MVP shifts
 

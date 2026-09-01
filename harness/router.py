@@ -1,15 +1,19 @@
-"""Deterministic eval-plan compiler.
+"""Deterministic eval-plan compiler plus an optional LLM ranker.
 
-Selects, orders, and (at execute time) stops recipes. Scorers own pass/fail.
-No embeddings, no LLM, no network.
+The compiler (`cx go`) owns {must_run, should_run, skip, order, budget_usd}.
+`--rank` may propose a revised plan; the catalog and a deterministic validator
+constrain it. The ranker never declares pass/fail — same rule as the advisor.
+Scorers own pass/fail. No embeddings in the compiler path.
 """
 
 from __future__ import annotations
 
 import json
+import os
 import re
 import subprocess
 import sys
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, Iterable
@@ -555,3 +559,543 @@ def confirm_execute(*, yes: bool) -> bool:
     except EOFError:
         return False
     return ans.strip().lower() in ("y", "yes")
+
+
+# --- optional LLM ranker ----------------------------------------------------
+# The compiler still owns the plan shape. --rank may propose; the catalog and
+# a deterministic validator constrain. The ranker never declares pass/fail.
+
+CompleteFn = Callable[[str, str, str], str]
+
+PLAN_CORE_FIELDS = ("must_run", "should_run", "skip", "order", "budget_usd")
+
+PLAN_JSON_SCHEMA: dict[str, Any] = {
+    "type": "object",
+    "additionalProperties": False,
+    "required": ["must_run", "should_run", "skip", "order", "budget_usd", "reasons"],
+    "properties": {
+        "must_run": {"type": "array", "items": {"type": "string"}},
+        "should_run": {"type": "array", "items": {"type": "string"}},
+        "skip": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "additionalProperties": False,
+                "required": ["id", "reason"],
+                "properties": {
+                    "id": {"type": "string"},
+                    "reason": {"type": "string"},
+                },
+            },
+        },
+        "order": {"type": "array", "items": {"type": "string"}},
+        "budget_usd": {"type": "number"},
+        "reasons": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "additionalProperties": False,
+                "required": ["id", "action", "reason"],
+                "properties": {
+                    "id": {"type": "string"},
+                    "action": {"type": "string", "enum": ["drop", "pull", "reorder"]},
+                    "reason": {"type": "string"},
+                },
+            },
+        },
+    },
+}
+
+RANKER_SYSTEM = """You are the Calvis eval plan ranker for a security-guard copilot harness.
+
+Hard rules:
+- You NEVER declare pass/fail. You never produce a verdict. Deterministic scorers own gates.
+- Return JSON only matching the supplied schema. No prose, no markdown.
+- You may only: reorder should_run; drop should_run items (action=drop + reason);
+  pull a skipped catalog recipe into should_run (action=pull + reason).
+- Do not drop must_run. Do not invent recipe ids. Do not exceed the budget cap.
+- smoke-welcome stays first in order whenever it is in the catalog.
+- Keep must_run exactly as the compiler provided.
+- skip is an array of {id, reason} objects, not bare strings.
+"""
+
+
+def router_defaults(data: dict | None = None, *, path: Path | None = None) -> dict[str, Any]:
+    """Ranker model from recipes.json defaults (not the copilot model)."""
+    data = data if data is not None else load_recipes(path)
+    d = data.get("defaults") or {}
+    nested = d.get("router") if isinstance(d.get("router"), dict) else {}
+    model = nested.get("model") or d.get("router.model") or "gpt-4.1-mini"
+    adapter = nested.get("adapter") or d.get("router.adapter") or d.get("adapter") or "openai"
+    return {"model": str(model), "adapter": str(adapter)}
+
+
+def recipe_cards_for_ranker(data: dict | None = None, *, path: Path | None = None) -> list[dict[str, Any]]:
+    data = data if data is not None else load_recipes(path)
+    cards = []
+    for name, recipe in (data.get("recipes") or {}).items():
+        card = dict(recipe.get("card") or {})
+        cards.append(
+            {
+                "id": name,
+                "description": recipe.get("description", ""),
+                "scorer": recipe.get("scorer"),
+                "suggested_when": recipe.get("suggested_when") or [],
+                "card": card,
+            }
+        )
+    return cards
+
+
+def _as_str_list(val: Any) -> list[str]:
+    if not isinstance(val, list):
+        return []
+    return [str(x) for x in val if not isinstance(x, dict)]
+
+
+def _normalize_skip(val: Any) -> list[dict[str, str]]:
+    rows: list[dict[str, str]] = []
+    if not isinstance(val, list):
+        return rows
+    for item in val:
+        if isinstance(item, dict) and item.get("id"):
+            rows.append({"id": str(item["id"]), "reason": str(item.get("reason") or "")})
+        elif isinstance(item, str) and item:
+            rows.append({"id": item, "reason": ""})
+    return rows
+
+
+def _skip_ids(skip: Any) -> list[str]:
+    return [row["id"] for row in _normalize_skip(skip)]
+
+
+def _dedupe(seq: list[str]) -> list[str]:
+    seen: set[str] = set()
+    out: list[str] = []
+    for x in seq:
+        if x not in seen:
+            seen.add(x)
+            out.append(x)
+    return out
+
+
+def _est_sum(ids: Iterable[str], cards: dict[str, dict]) -> float:
+    total = 0.0
+    for rid in ids:
+        total += float((cards.get(rid) or {}).get("est_usd") or 0)
+    return total
+
+
+def plan_core(plan: dict) -> dict[str, Any]:
+    """Public plan fields the ranker must match."""
+    return {
+        "must_run": list(plan.get("must_run") or []),
+        "should_run": list(plan.get("should_run") or []),
+        "skip": _normalize_skip(plan.get("skip")),
+        "order": list(plan.get("order") or []),
+        "budget_usd": float(plan.get("budget_usd") or 0),
+    }
+
+
+def diff_summary_for_ranker(
+    changed_files: list[str],
+    *,
+    variant_dir: Path | None = None,
+    baseline_dir: Path | None = None,
+    excerpt_chars: int = 4000,
+) -> dict[str, Any]:
+    excerpt = ""
+    if variant_dir is not None:
+        try:
+            from harness.advisor import prompt_file_diff
+
+            base = baseline_dir or (ROOT / "variants" / "baseline")
+            files, diff = prompt_file_diff(Path(base), Path(variant_dir))
+            changed_files = list(files) if files else list(changed_files)
+            excerpt = diff if len(diff) <= excerpt_chars else diff[:excerpt_chars] + "\n… [truncated]"
+        except Exception:
+            excerpt = ""
+    return {"filenames": list(changed_files), "unified_diff_excerpt": excerpt}
+
+
+def validate_ranked_plan(
+    ranked: dict,
+    compiler: dict,
+    *,
+    catalog: list[str],
+    cards: dict[str, dict],
+    budget_cap: float | None = None,
+) -> tuple[dict[str, Any], list[str]]:
+    """Deterministic post-validation. Agent proposes; catalog constrains.
+
+    Corrections:
+      (1) any dropped must_run is re-inserted
+      (2) any recipe id not in the catalog is removed
+      (3) budget cap re-applied
+      (4) smoke-welcome stays first
+    """
+    catalog = list(catalog)
+    catalog_set = set(catalog)
+    cap = budget_cap if budget_cap is not None else compiler.get("budget_cap")
+    corrections: list[str] = []
+
+    must_run = _as_str_list(ranked.get("must_run"))
+    should_run = _as_str_list(ranked.get("should_run"))
+    # allow skip ids mixed into should_run if the model used bare strings
+    if isinstance(ranked.get("should_run"), list):
+        should_run = []
+        for x in ranked.get("should_run") or []:
+            if isinstance(x, dict) and x.get("id"):
+                should_run.append(str(x["id"]))
+            elif not isinstance(x, dict):
+                should_run.append(str(x))
+    skip_rows = _normalize_skip(ranked.get("skip"))
+    order = _as_str_list(ranked.get("order"))
+    if not order:
+        # order may have been sent with dicts; ignore
+        order = [str(x) for x in (ranked.get("order") or []) if isinstance(x, str)]
+    reasons = ranked.get("reasons") if isinstance(ranked.get("reasons"), list) else []
+
+    def _strip_unknown(seq: list[str], field: str) -> list[str]:
+        keep, dropped = [], []
+        for x in seq:
+            if x in catalog_set:
+                keep.append(x)
+            else:
+                dropped.append(x)
+        if dropped:
+            corrections.append(f"removed unknown recipe id(s) from {field}: {dropped}")
+        return keep
+
+    # (2) unknown ids
+    must_run = _strip_unknown(must_run, "must_run")
+    should_run = _strip_unknown(should_run, "should_run")
+    skip_unknown = [r for r in skip_rows if r["id"] not in catalog_set]
+    if skip_unknown:
+        corrections.append(
+            f"removed unknown recipe id(s) from skip: {[r['id'] for r in skip_unknown]}"
+        )
+        skip_rows = [r for r in skip_rows if r["id"] in catalog_set]
+    order = _strip_unknown(order, "order")
+
+    compiler_must = [x for x in _as_str_list(compiler.get("must_run")) if x in catalog_set]
+    if SMOKE_ID in catalog_set and SMOKE_ID not in compiler_must:
+        compiler_must = [SMOKE_ID] + compiler_must
+
+    extra_must = [x for x in must_run if x not in compiler_must]
+    if extra_must:
+        corrections.append(f"moved unauthorized must_run into should_run: {extra_must}")
+        for x in extra_must:
+            if x not in should_run:
+                should_run.append(x)
+
+    # (1) re-insert dropped must_run
+    dropped_must = [rid for rid in compiler_must if rid not in must_run]
+    for rid in dropped_must:
+        corrections.append(f"re-inserted dropped must_run: {rid}")
+    must_run = list(compiler_must)
+
+    should_run = _dedupe([x for x in should_run if x not in must_run and x in catalog_set])
+    ranked_should_order = [x for x in order if x in should_run]
+    rest_should = [x for x in should_run if x not in ranked_should_order]
+    should_run = _dedupe(ranked_should_order + rest_should)
+
+    ranked_order_for_first = list(order) if order else list(must_run + should_run)
+    # (4) log if the ranker did not keep smoke-welcome first
+    if SMOKE_ID in catalog_set and SMOKE_ID in must_run:
+        if not ranked_order_for_first or ranked_order_for_first[0] != SMOKE_ID:
+            corrections.append("moved smoke-welcome to first in order")
+
+    # (3) budget cap: never trim must_run; overflow should_run → skip
+    skip_reasons = {r["id"]: r["reason"] for r in skip_rows}
+    before_should = list(should_run)
+    if cap is not None:
+        budget_f = float(cap)
+        must_cost = _est_sum(must_run, cards)
+        kept = list(should_run)
+        while kept and must_cost + _est_sum(kept, cards) - 1e-12 > budget_f:
+            drop = _sort_ids(kept, cards)[-1]
+            kept.remove(drop)
+            skip_reasons[drop] = (
+                f"trimmed by budget cap (cap={budget_f}, "
+                f"est={float((cards.get(drop) or {}).get('est_usd') or 0)})"
+            )
+        trimmed = [x for x in before_should if x not in kept]
+        if trimmed:
+            corrections.append(
+                f"re-applied budget cap {cap}; trimmed from should_run/order: {trimmed}"
+            )
+        should_run = kept
+
+    skip_ids = [rid for rid in catalog if rid not in must_run and rid not in should_run]
+    skip_rows = [
+        {"id": rid, "reason": skip_reasons.get(rid) or "not selected"}
+        for rid in skip_ids
+    ]
+
+    order = order_plan(must_run + should_run, cards)
+    if SMOKE_ID in catalog_set and SMOKE_ID in must_run:
+        order = [SMOKE_ID] + [x for x in order if x != SMOKE_ID]
+        must_run = [SMOKE_ID] + [x for x in must_run if x != SMOKE_ID]
+
+    plan = {
+        "must_run": must_run,
+        "should_run": should_run,
+        "skip": skip_rows,
+        "order": order,
+        "budget_usd": round(_est_sum(order, cards), 4),
+        "budget_cap": cap,
+        "stop_rules": list(compiler.get("stop_rules") or STOP_RULES),
+        "changed_files": list(compiler.get("changed_files") or []),
+        "intent": compiler.get("intent"),
+        "warnings": list(compiler.get("warnings") or []),
+        "reasons": reasons,
+        "source": "ranker",
+    }
+    return plan, corrections
+
+
+def parse_plan_json(text: str) -> dict:
+    """Reject prose. The whole payload must be a JSON object with the plan keys."""
+    raw = (text or "").strip()
+    if not raw:
+        raise ValueError("empty ranker output")
+    if raw.startswith("```") or not raw.startswith("{") or not raw.endswith("}"):
+        raise ValueError("ranker output is not raw JSON")
+    data = json.loads(raw)
+    if not isinstance(data, dict):
+        raise ValueError("plan must be a JSON object")
+    missing = [k for k in ("must_run", "should_run", "skip", "order") if k not in data]
+    if missing:
+        raise ValueError(f"missing plan keys: {missing}")
+    return data
+
+
+def _openai_rank(system: str, user: str, model: str, *, strict: bool = True) -> str:
+    from openai import OpenAI
+
+    client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
+    kwargs: dict[str, Any] = {
+        "model": model,
+        "messages": [
+            {"role": "system", "content": system},
+            {"role": "user", "content": user},
+        ],
+    }
+    if strict:
+        kwargs["response_format"] = {
+            "type": "json_schema",
+            "json_schema": {
+                "name": "eval_plan",
+                "strict": True,
+                "schema": PLAN_JSON_SCHEMA,
+            },
+        }
+    else:
+        kwargs["response_format"] = {"type": "json_object"}
+    if str(model).startswith("gpt-5"):
+        kwargs["reasoning_effort"] = "none"
+    else:
+        kwargs["temperature"] = 0
+    resp = client.chat.completions.create(**kwargs)
+    return (resp.choices[0].message.content or "").strip()
+
+
+def _anthropic_rank(system: str, user: str, model: str) -> str:
+    import anthropic
+
+    client = anthropic.Anthropic(api_key=os.environ.get("ANTHROPIC_API_KEY"))
+    resp = client.messages.create(
+        model=model,
+        max_tokens=1500,
+        system=system,
+        messages=[{"role": "user", "content": user}],
+    )
+    parts = []
+    for block in resp.content:
+        if getattr(block, "type", None) == "text":
+            parts.append(block.text)
+    return "\n".join(parts).strip()
+
+
+def _ranker_user_payload(
+    *,
+    cards: list[dict],
+    diff: dict,
+    intent: str | None,
+    compiler: dict,
+) -> str:
+    body = {
+        "recipe_cards": cards,
+        "diff_summary": diff,
+        "intent": intent or "",
+        "compiler_plan": plan_core(compiler),
+        "budget_cap": compiler.get("budget_cap"),
+        "allowed_ops": [
+            "reorder should_run",
+            "drop should_run items with a reason",
+            "pull a skipped card into should_run with a reason",
+        ],
+        "schema": PLAN_JSON_SCHEMA,
+    }
+    return (
+        "Revise the compiler plan if warranted. JSON only.\n"
+        + json.dumps(body, indent=2)[:24000]
+    )
+
+
+@dataclass
+class RankResult:
+    compiler_plan: dict
+    ranked_plan: dict
+    corrections: list[str] = field(default_factory=list)
+    fallback: bool = False
+    fallback_reason: str | None = None
+    ranker_model: str | None = None
+
+
+def rank_plan(
+    compiler: dict,
+    *,
+    recipes_data: dict | None = None,
+    recipes_path: Path | None = None,
+    changed_files: list[str] | None = None,
+    intent: str | None = None,
+    variant_dir: Path | None = None,
+    model: str | None = None,
+    adapter: str | None = None,
+    complete_fn: CompleteFn | None = None,
+) -> RankResult:
+    """Call the ranker, parse JSON (one retry), validate, or fall back silently."""
+    data = recipes_data if recipes_data is not None else load_recipes(recipes_path)
+    defaults = router_defaults(data)
+    model = model or defaults["model"]
+    adapter = adapter or defaults["adapter"]
+    recipes = dict(data.get("recipes") or {})
+    catalog = list(recipes.keys())
+    cards = {rid: dict(rec.get("card") or {}) for rid, rec in recipes.items()}
+    diff = diff_summary_for_ranker(
+        list(changed_files if changed_files is not None else compiler.get("changed_files") or []),
+        variant_dir=variant_dir,
+    )
+    user = _ranker_user_payload(
+        cards=recipe_cards_for_ranker(data),
+        diff=diff,
+        intent=intent if intent is not None else compiler.get("intent"),
+        compiler=compiler,
+    )
+
+    def _call(prompt: str, attempt: int) -> str:
+        if complete_fn is not None:
+            return complete_fn(RANKER_SYSTEM, prompt, model)
+        if adapter == "anthropic":
+            return _anthropic_rank(RANKER_SYSTEM, prompt, model)
+        return _openai_rank(RANKER_SYSTEM, prompt, model, strict=(attempt == 0))
+
+    last_err: str | None = None
+    parsed: dict | None = None
+    for attempt in range(2):
+        prompt = user
+        if attempt == 1:
+            prompt = (
+                "Your previous output was not valid JSON matching the plan schema. "
+                "Return only a JSON object. No prose.\n\n" + user
+            )
+        try:
+            raw = _call(prompt, attempt)
+            parsed = parse_plan_json(raw)
+            break
+        except Exception as exc:  # noqa: BLE001 — any LLM/parse failure falls back
+            last_err = f"{type(exc).__name__}: {exc}"
+            parsed = None
+
+    if parsed is None:
+        fallback_plan = dict(compiler)
+        fallback_plan["source"] = "ranker_fallback"
+        fallback_plan["reasons"] = []
+        return RankResult(
+            compiler_plan=compiler,
+            ranked_plan=fallback_plan,
+            corrections=[],
+            fallback=True,
+            fallback_reason=last_err or "unknown ranker error",
+            ranker_model=model,
+        )
+
+    validated, corrections = validate_ranked_plan(
+        parsed,
+        compiler,
+        catalog=catalog,
+        cards=cards,
+        budget_cap=compiler.get("budget_cap"),
+    )
+    return RankResult(
+        compiler_plan=compiler,
+        ranked_plan=validated,
+        corrections=corrections,
+        fallback=False,
+        fallback_reason=None,
+        ranker_model=model,
+    )
+
+
+def plan_diff_text(compiler: dict, ranked: dict) -> str:
+    """Human-readable diff of the two plans. Not a verdict."""
+    left, right = plan_core(compiler), plan_core(ranked)
+    lines = ["plan diff (compiler → ranked):"]
+    changed = False
+    for key in ("must_run", "should_run", "order", "budget_usd"):
+        a, b = left.get(key), right.get(key)
+        if a == b:
+            lines.append(f"  {key}: (unchanged) {a!r}")
+        else:
+            changed = True
+            lines.append(f"  {key}: {a!r} → {b!r}")
+    a_skip, b_skip = _skip_ids(left.get("skip")), _skip_ids(right.get("skip"))
+    if a_skip == b_skip:
+        lines.append(f"  skip: (unchanged) {a_skip!r}")
+    else:
+        changed = True
+        lines.append(f"  skip: {a_skip!r} → {b_skip!r}")
+    reasons = ranked.get("reasons") or []
+    if reasons:
+        lines.append("  ranker reasons:")
+        for r in reasons:
+            if isinstance(r, dict):
+                lines.append(
+                    f"    - {r.get('action', '?')} {r.get('id', '?')}: {r.get('reason', '')}"
+                )
+            else:
+                lines.append(f"    - {r}")
+    if not changed:
+        lines.append("  (no field changes)")
+    return "\n".join(lines)
+
+
+def format_ranked_go_output(
+    compiler: dict,
+    ranked: RankResult,
+) -> str:
+    chunks = [
+        "=== compiler plan ===",
+        format_plan_table(compiler),
+        "",
+        "=== ranked plan ===",
+        format_plan_table(ranked.ranked_plan),
+        "",
+        "=== plan diff ===",
+        plan_diff_text(compiler, ranked.ranked_plan),
+    ]
+    if ranked.fallback:
+        chunks.append("")
+        chunks.append(f"note: ranker fallback to compiler plan ({ranked.fallback_reason})")
+    if ranked.corrections:
+        chunks.append("")
+        chunks.append("ranker validator corrections:")
+        for c in ranked.corrections:
+            chunks.append(f"  - {c}")
+    if ranked.ranker_model:
+        chunks.append("")
+        chunks.append(f"ranker model: {ranked.ranker_model} (not a verdict)")
+    return "\n".join(chunks) + "\n"
+
