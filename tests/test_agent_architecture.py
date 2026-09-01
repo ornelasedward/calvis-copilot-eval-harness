@@ -108,16 +108,30 @@ def test_diagnose_llm_path_is_implemented_and_injectable():
     assert "pass" not in d.to_dict()
 
 
-def test_mine_is_implemented_and_patch_is_session_todo():
+def test_mine_and_patch_are_implemented_and_api_free(tmp_path):
     # Session A is live: cards come from the shift JSON, no API call.
     cards = mine_shift("50737")
     assert cards and all(c.source == "json" for c in cards)
     for c in cards:
         c.validate()
+
+    # Session C is live: dry mode edits exactly one file, under a tmp variants
+    # root so the repo's variants/ never grows an auto_* dir from a test.
     d = diagnose_deterministic([_card()])
-    with pytest.raises(SessionTodo) as c:
-        apply_patch(d)
-    assert c.value.session == "C"
+
+    def no_api(system, user):
+        raise AssertionError("skip_llm must not call the model")
+
+    plan = apply_patch(
+        d,
+        skip_llm=True,
+        variants_dir=tmp_path / "variants",
+        complete_fn=no_api,
+    )
+    assert isinstance(plan, PatchPlan)
+    assert plan.changed_file == d.target_file
+    assert Path(plan.variant_dir).name.startswith("auto_")
+    assert plan.diff.startswith(f"--- a/{d.target_file}")
 
 
 def test_evaluate_dry_run_is_implemented_and_api_free():
