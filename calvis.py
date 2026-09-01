@@ -37,8 +37,12 @@ def _help() -> None:
   cx go -n --rank            compiler plan + optional LLM ranker (not a verdict)
   cx go [variant] [--yes]    plan, confirm, execute in order
   cx why <code> [-n]         analyze prompt vs baseline
+  cx mine [--dry] [--limit N]  mine shifts/runs for uncovered failure modes
+  cx judge <run>             ADVISORY conduct checklist (never a gate)
+  cx judge --pair <a> <b>    ADVISORY pairwise preference
+  cx calibrate               ADVISORY judge vs gold labels
 
-  Test codes:   wl=welcome  cl=claims  es=escalation  qt=quietness  vo=voice
+  Test codes:   wl=welcome  cl=claims  es=escalation  qt=quietness  vo=voice  ag=photo-gamer
   Why codes:    va=A  v2=A2  v3=A3  vb=B  vc=C
 
 Examples:
@@ -48,6 +52,7 @@ Examples:
   .\\cx go v3 --intent "escalation" --yes
   .\\cx t es
   .\\cx why v3 -n
+  .\\cx mine --dry
 """
     )
 
@@ -75,7 +80,7 @@ def main(argv: list[str] | None = None) -> None:
 
     if cmd in ("t", "test"):
         if not rest:
-            sys.exit("usage: calvis t <wl|cl|es|qt> [-n]")
+            sys.exit("usage: calvis t <wl|cl|es|qt|ag> [-n]")
         recipe = rest[0]
         dry = "-n" in rest or "--dry-run" in rest
         from cli import cmd_test
@@ -88,7 +93,7 @@ def main(argv: list[str] | None = None) -> None:
                 model=None,
                 variant=None,
                 control=None,
-                repeat=1,
+                repeat=None,
                 dry_run=dry,
             )
         )
@@ -123,6 +128,33 @@ def main(argv: list[str] | None = None) -> None:
                 no_llm=no_llm,
             )
         )
+        return
+
+    if cmd in ("mine", "m"):
+        dry = any(a in ("-n", "--dry", "--dry-run") for a in rest)
+        no_proposals = "--no-proposals" in rest
+        limit = 30
+        if "--limit" in rest:
+            i = rest.index("--limit")
+            try:
+                limit = int(rest[i + 1])
+            except (IndexError, ValueError):
+                sys.exit("usage: calvis mine [--dry] [--limit N]")
+        from harness.miner import run_mine
+
+        run_mine(dry=dry, limit=limit, write_proposals=not no_proposals)
+        return
+
+    if cmd in ("judge", "j"):
+        from cli import main as cli_main
+
+        cli_main(["judge", *rest])
+        return
+
+    if cmd in ("calibrate", "cal"):
+        from cli import main as cli_main
+
+        cli_main(["calibrate", *rest])
         return
 
     sys.exit(f"unknown command: {cmd}\nTry: py calvis.py help")

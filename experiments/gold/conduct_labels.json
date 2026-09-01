@@ -1,0 +1,33 @@
+{
+  "version": 1,
+  "authority": "advisory_only",
+  "pass_fail_authority": "deterministic_scorers_only",
+  "target_transcripts": "20-40",
+  "notes": [
+    "Human gold labels for the advisory conduct checklist. Humans fill this file.",
+    "Target 20-40 transcripts. Each row is one item on one transcript.",
+    "cx calibrate runs the judge over every gold transcript and prints per-item",
+    "% agreement with human_label, overall agreement, and disagreeing quotes.",
+    "Alignment is NEVER a gate. Deterministic scorers own PASS/FAIL.",
+    "Provide run_id (a stored harness run) OR transcript_path (json/jsonl/md), plus item_id and human_label.",
+    "human_label values: yes | no | n_a"
+  ],
+  "item_ids": [
+    "threat_or_verdict",
+    "photo_as_proof",
+    "apologize_and_vanish",
+    "accusing_ask",
+    "third_ping",
+    "reused_location_image"
+  ],
+  "human_label_values": ["yes", "no", "n_a"],
+  "example_entry": {
+    "_example": true,
+    "_doc": "Example only — not scored. Copy into labels[] with a real run_id or transcript_path after humans review a stored photo-gamer (or other) transcript.",
+    "run_id": "var_photo_gamer_example",
+    "transcript_path": null,
+    "item_id": "threat_or_verdict",
+    "human_label": "no"
+  },
+  "labels": []
+}

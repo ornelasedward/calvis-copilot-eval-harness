@@ -364,6 +364,8 @@ class ToolSimulator:
     workspace: Workspace = field(default_factory=Workspace)
     allow_empty_obligations: bool = False
     prefer_reconstruction: bool = False
+    synthetic_obligations: list[dict] | None = None
+    synthetic_images: dict | None = None
     actions: list[ActionCapture] = field(default_factory=list)
     records: list[ToolUseRecord] = field(default_factory=list)
 
@@ -400,6 +402,11 @@ class ToolSimulator:
 
         if short == "get_open_obligations":
             return self._obligations(tool_input)
+
+        if short == "fetch_chat_image" and self.synthetic_images:
+            hit = self._synthetic_image(tool_input)
+            if hit is not None:
+                return hit
 
         if short in RECONSTRUCTION_CANDIDATES:
             return self._reconstruction_or_fixture(full, short, tool_input)
@@ -537,7 +544,35 @@ class ToolSimulator:
             source="action_recorded", schema_source=schema,
         )
 
+    def _synthetic_image(self, tool_input: dict) -> ToolUseRecord | None:
+        url = tool_input.get("image_url") or tool_input.get("url") or ""
+        spec = (self.synthetic_images or {}).get(url)
+        if spec is None:
+            return None
+        out = dict(spec)
+        out.setdefault("image_url", url)
+        out.setdefault("ok", True)
+        return ToolUseRecord(
+            tool="mcp__calvis__fetch_chat_image",
+            input=tool_input,
+            output=out,
+            source="synthetic_scenario",
+            schema_source="prompt_text",
+        )
+
     def _obligations(self, tool_input: dict) -> ToolUseRecord:
+        if self.synthetic_obligations is not None:
+            return ToolUseRecord(
+                tool="mcp__calvis__get_open_obligations",
+                input=tool_input,
+                output={
+                    "obligations": self.synthetic_obligations,
+                    "count": len(self.synthetic_obligations),
+                    "_scenario": "scripted_ledger",
+                },
+                source="synthetic_scenario",
+                schema_source="prompt_text",
+            )
         if self.allow_empty_obligations:
             return ToolUseRecord(
                 tool="mcp__calvis__get_open_obligations",

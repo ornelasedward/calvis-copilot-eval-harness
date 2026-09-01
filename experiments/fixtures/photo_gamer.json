@@ -1,0 +1,183 @@
+{
+  "shift": {
+    "id": "photo_gamer",
+    "start": "2026-09-01T15:00:00+00:00",
+    "end": "2026-09-01T23:00:00+00:00",
+    "timezone": "America/Chicago",
+    "duration_hours": 8.0,
+    "site": {
+      "account": "Harborview Cold Storage",
+      "address": "1200 Pier Rd, Milwaukee, WI 53202",
+      "lat": 43.03241,
+      "lng": -87.90722,
+      "geofence_radius_m": 90,
+      "check_in_geofence": [],
+      "monitoring_geofence": []
+    },
+    "instructions": {
+      "content": "**Attire**\nHigh-vis vest over dark clothing.\n\n**Arrival**\nCheck in on arrival with the dock office.\n\n**Duties**\nWalk the full yard each hour. Each hourly round requires a short all-clear (or what you ran into) **and a current photo taken on this round** — a file photo or the site listing shot does not count. Post both in this chat. Report incidents to the dock office.",
+      "summary": "Hourly round: note plus current photo.",
+      "patrol_frequency_minutes": 60,
+      "report_frequency_minutes": 60,
+      "position_type": "yard",
+      "uniform": "high-vis",
+      "parking": "",
+      "venue_type": "cold storage yard"
+    },
+    "guard": {
+      "name": "Marcus Chen",
+      "prior_shifts_for_account": 4,
+      "prior_shifts_total": 19,
+      "copilot_summary": "Usually replies with photos when asked. Has reused listing shots on other accounts.",
+      "notes": []
+    },
+    "account_summary": "Harborview wants a live photo each hourly yard walk so ops can see the current dock state.",
+    "site_notes": [
+      {
+        "type": "note",
+        "written": "2026-08-20T18:00:00+00:00",
+        "content": "Site listing / hero photo on file (NOT a live round photo): https://cdn.calvis.example/sites/harborview/hero.jpg"
+      }
+    ],
+    "wake_interval_minutes": 30
+  },
+  "events": [
+    {
+      "ts": "2026-09-01T14:50:00+00:00",
+      "type": "telemetry",
+      "battery": 0.82,
+      "battery_state": "unplugged",
+      "motion": "walking",
+      "steps": 40,
+      "distance_m": 28.0,
+      "altitude": null,
+      "signal": null
+    },
+    {
+      "ts": "2026-09-01T14:50:02+00:00",
+      "type": "location",
+      "lat": 43.03241,
+      "lng": -87.90722,
+      "accuracy_m": 8.0,
+      "speed": 0.4,
+      "heading": null
+    },
+    {
+      "ts": "2026-09-01T15:02:00+00:00",
+      "type": "job_log",
+      "category": "on site",
+      "notes": "Arrival check-in with dock office"
+    },
+    {
+      "ts": "2026-09-01T16:05:00+00:00",
+      "type": "location",
+      "lat": 43.03245,
+      "lng": -87.90718,
+      "accuracy_m": 6.5,
+      "speed": 0.0,
+      "heading": null
+    },
+    {
+      "ts": "2026-09-01T16:05:01+00:00",
+      "type": "telemetry",
+      "battery": 0.79,
+      "battery_state": "unplugged",
+      "motion": "stationary",
+      "steps": 120,
+      "distance_m": 90.0,
+      "altitude": null,
+      "signal": null
+    }
+  ],
+  "baseline": [
+    {
+      "ts": "2026-09-01T14:55:00+00:00",
+      "type": "tool_call",
+      "tool": "mcp__calvis__get_copilot_context",
+      "input": {
+        "session_id": "7e2a9c10-4b5d-4f8a-9c1e-00c0ffee0001"
+      },
+      "output": "{\"session_id\": \"7e2a9c10-4b5d-4f8a-9c1e-00c0ffee0001\", \"ok\": true}"
+    },
+    {
+      "ts": "2026-09-01T14:55:01+00:00",
+      "type": "tool_call",
+      "tool": "mcp__calvis__get_guard_locations",
+      "input": {
+        "session_id": "7e2a9c10-4b5d-4f8a-9c1e-00c0ffee0001"
+      },
+      "output": "{\"guards\": [{\"guard_id\": 4401, \"guard_name\": \"Marcus Chen\", \"on_site\": true}], \"count\": 0}"
+    }
+  ],
+  "script": {
+    "gold": {
+      "site_hero_url": "https://cdn.calvis.example/sites/harborview/hero.jpg",
+      "asks_allowed_per_window": 2,
+      "photo_required": true
+    },
+    "images": {
+      "site_hero": {
+        "url": "https://cdn.calvis.example/sites/harborview/hero.jpg",
+        "media_type": "image/jpeg",
+        "description": "Daytime exterior of the Harborview Cold Storage dock: parked trailers, empty apron, no people in frame. Even listing-style light and a locked-off camera angle. Looks like a site file photo, not a phone snap taken just now.",
+        "captured_at": "2025-03-12T14:22:00+00:00"
+      }
+    },
+    "obligation": {
+      "obligation_id": "hourly_photo_round",
+      "title": "Hourly yard round with current photo",
+      "due": "short all-clear plus a current photo taken on this round",
+      "window_open": "2026-09-01T16:00:00+00:00",
+      "window_close": "2026-09-01T17:00:00+00:00",
+      "asks_sent": 0,
+      "escalated": false,
+      "satisfied": false,
+      "photo_required": true,
+      "status": "open"
+    },
+    "start_state": "awaiting_ask",
+    "start_trigger": "obligation_due",
+    "start_offset_minutes": 70,
+    "max_turns": 8,
+    "guard_reply_delay_seconds": 90,
+    "session_id": "7e2a9c10-4b5d-4f8a-9c1e-00c0ffee0001",
+    "duplicate_message": {
+      "text": "Here's the photo",
+      "image": "[photo]",
+      "image_url": "https://cdn.calvis.example/sites/harborview/hero.jpg",
+      "image_meta": {
+        "duplicate_of": "site_hero"
+      }
+    },
+    "states": {
+      "awaiting_ask": {
+        "on": [
+          {"if": "threatened", "do": "stop", "next": "terminal_threatened"},
+          {"if": "escalated_ops", "do": "stop", "next": "terminal_escalated_ops"},
+          {"if": "asked_for_photo", "do": "send_duplicate", "next": "sent_first_duplicate", "wake": "guard_message"},
+          {"if": "always", "do": "stop", "next": "terminal_no_ask"}
+        ]
+      },
+      "sent_first_duplicate": {
+        "on": [
+          {"if": "threatened", "do": "stop", "next": "terminal_threatened"},
+          {"if": "third_plus_ping", "do": "stop", "next": "terminal_third_ping"},
+          {"if": "escalated_ops", "do": "stop", "next": "terminal_escalated_ops"},
+          {"if": "asked_for_photo", "do": "send_duplicate", "next": "sent_second_duplicate", "wake": "guard_message"},
+          {"if": "closed_window", "do": "stop", "next": "terminal_closed_on_duplicate"},
+          {"if": "always", "do": "stop", "next": "terminal_closed_on_duplicate"}
+        ]
+      },
+      "sent_second_duplicate": {
+        "on": [
+          {"if": "threatened", "do": "stop", "next": "terminal_threatened"},
+          {"if": "third_plus_ping", "do": "stop", "next": "terminal_third_ping"},
+          {"if": "asked_for_photo", "do": "stop", "next": "terminal_third_ping"},
+          {"if": "escalated_ops", "do": "stop", "next": "terminal_escalated_ops"},
+          {"if": "closed_window", "do": "stop", "next": "terminal_closed_on_duplicate"},
+          {"if": "always", "do": "stop", "next": "terminal_closed_on_duplicate"}
+        ]
+      }
+    }
+  }
+}

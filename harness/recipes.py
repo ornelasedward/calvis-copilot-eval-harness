@@ -20,6 +20,73 @@ def load_recipes(path: Path | None = None) -> dict:
     return json.loads(p.read_text(encoding="utf-8"))
 
 
+def miner_defaults(path: Path | None = None) -> dict:
+    """Return miner adapter/model. Model must differ from the copilot default."""
+    data = load_recipes(path)
+    defaults = data.get("defaults") or {}
+    miner = dict(defaults.get("miner") or {})
+    copilot_model = defaults.get("model") or "gpt-5.6-sol"
+    miner.setdefault("adapter", defaults.get("adapter") or "openai")
+    if not miner.get("model"):
+        raise KeyError("recipes.json defaults.miner.model is required")
+    if miner["model"] == copilot_model:
+        raise ValueError(
+            f"miner.model ({miner['model']}) must differ from copilot model ({copilot_model})"
+        )
+    miner["copilot_model"] = copilot_model
+    return miner
+
+
+def list_cards(path: Path | None = None) -> list[dict]:
+    """Catalog cards used by the miner gap analysis (covers + intent)."""
+    data = load_recipes(path)
+
+    def _as_text(value: Any) -> str:
+        if value is None:
+            return ""
+        if isinstance(value, str):
+            return value
+        if isinstance(value, dict):
+            return " ".join(_as_text(v) for v in value.values())
+        if isinstance(value, (list, tuple)):
+            return " ".join(_as_text(v) for v in value)
+        return str(value)
+
+    def _as_list(value: Any) -> list[str]:
+        if value is None:
+            return []
+        if isinstance(value, str):
+            return [value]
+        if isinstance(value, dict):
+            out: list[str] = []
+            for v in value.values():
+                out.extend(_as_list(v))
+            return out
+        if isinstance(value, (list, tuple)):
+            out = []
+            for v in value:
+                out.extend(_as_list(v))
+            return out
+        return [str(value)]
+
+    rows = []
+    for name, r in (data.get("recipes") or {}).items():
+        card = dict(r.get("card") or {})
+        rows.append(
+            {
+                "recipe": name,
+                "intent": _as_text(card.get("intent")) or (r.get("description") or ""),
+                "description": r.get("description") or "",
+                "risk_class": card.get("risk_class") or "",
+                "covers": _as_list(card.get("covers")),
+                "required_when": _as_list(
+                    card.get("required_when") or r.get("suggested_when") or []
+                ),
+            }
+        )
+    return rows
+
+
 def resolve_recipe_name(name: str, path: Path | None = None) -> str:
     """Resolve short alias (b, a3, smoke) to full recipe id."""
     data = load_recipes(path)
@@ -353,12 +420,22 @@ def _score_voice(store: ExperimentStore, control_id: str, variant_id: str, recip
     }
 
 
+def _score_photo_gamer(
+    store: ExperimentStore, control_id: str, variant_id: str, recipe: dict
+) -> dict:
+    """Process gates on a scripted photo-gamer trajectory. Aggregated pass^k."""
+    from harness.scenario import score_photo_gamer_run
+
+    return score_photo_gamer_run(store, control_id, variant_id, recipe)
+
+
 SCORERS: dict[str, Callable[..., dict]] = {
     "welcome": _score_welcome,
     "verify_b": _score_verify_b,
     "escalation_focus": _score_escalation_focus,
     "quietness": _score_quietness,
     "voice": _score_voice,
+    "photo_gamer": _score_photo_gamer,
 }
 
 
@@ -371,7 +448,7 @@ def execute_recipe(
     model: str | None = None,
     candidate_variant: str | None = None,
     control_variant: str | None = None,
-    repeat: int = 1,
+    repeat: int | None = None,
     dry_run: bool = False,
     recipes_path: Path | None = None,
 ) -> dict[str, Any]:
@@ -393,6 +470,8 @@ def execute_recipe(
     candidate_variant = candidate_variant or recipe.get("candidate_variant")
     mode = recipe.get("mode") or "turn"
     jobs = recipe.get("jobs") or []
+    if repeat is None:
+        repeat = int(recipe.get("repetitions") or 1)
     stamp = _stamp()
     control_id = f"ctrl_{name.replace('-', '_')}_{stamp}"
     variant_id = f"var_{name.replace('-', '_')}_{stamp}"
@@ -409,10 +488,31 @@ def execute_recipe(
         "variant_run_id": variant_id,
         "jobs": jobs,
         "scorer": recipe.get("scorer"),
+        "repetitions": repeat,
         "dry_run": dry_run,
     }
-    if dry_run:
+    # Historical recipes: --dry prints the plan and stops. Scenario recipes
+    # still run, against a canned copilot, so the scripted guard is exercised
+    # with zero API calls.
+    if dry_run and mode != "scenario":
         return {"plan": plan, "score": None, "pass": None}
+
+    if mode == "scenario":
+        from harness.scenario import execute_scenario_recipe
+
+        return execute_scenario_recipe(
+            name=name,
+            recipe=recipe,
+            plan=plan,
+            variant_id=variant_id,
+            control_id=control_id,
+            root=root,
+            adapter=adapter,
+            model=model,
+            candidate_variant=candidate_variant,
+            dry_run=dry_run,
+            repeat=repeat,
+        )
 
     store = ExperimentStore(root / "runs")
     print(f"=== recipe {name}: control ({control_variant}) -> {control_id} ===")
