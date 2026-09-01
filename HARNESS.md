@@ -60,18 +60,17 @@ Plan from changed files (offline, no API):
 
 `cx t <alias>` is unchanged. Same via Python: `py calvis.py t cl` / `py calvis.py go -n` / `py calvis.py why v3`.
 
-## CI
+## Offline gate
 
-GitHub Actions (`.github/workflows/eval.yml`):
-
-- On push/PR to `main` or `staging`: pytest + `calvis.py ls` + dry-run `t cl` / `t ag` / `go -n` / `why vb`
-- Manual **workflow_dispatch** with `live_recipes=true`: runs `t wl` if `OPENAI_API_KEY` repo secret is set
+There is no hosted CI; run the offline gate locally before pushing. Every
+command below is API-free (dry modes use canned adapters and stored fixtures):
 
 ```bash
-# Local mirror of CI offline gate
 py -m pytest tests -q
 py calvis.py t cl -n
 py calvis.py t ag -n
+py calvis.py go -n
+py calvis.py loop 50737 -n --no-mint
 ```
 
 ## Recipes (see `experiments/recipes.json`)

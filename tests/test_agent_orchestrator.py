@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import json
 import shutil
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -414,10 +415,15 @@ def test_no_mint_flag_leaves_recipes_untouched(tmp_path, recipes_copy):
 
 def test_recipe_body_records_an_unregistered_probe_instead_of_pretending(recipes_copy):
     card = _card("photo_without_inspect", "conduct", turns=(4,))
-    body = build_regression_recipe(
-        card, _diagnosis(card), kept_variant="variants/auto_fake_01"
-    )
+    diag = _diagnosis(card)
+    body = build_regression_recipe(card, diag, kept_variant="variants/auto_fake_01")
     assert body["scorer"] == "photo_inspect"
+    assert body["scorer_registered"] is True
+    assert "not registered" not in body["description"]
+
+    # A class whose probe really is missing says so rather than pretending.
+    diag = replace(diag, scorer="probe_that_does_not_exist")
+    body = build_regression_recipe(card, diag, kept_variant="variants/auto_fake_01")
     assert body["scorer_registered"] is False
     assert "not registered" in body["description"]
 

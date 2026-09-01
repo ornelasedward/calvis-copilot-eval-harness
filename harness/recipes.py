@@ -476,6 +476,60 @@ SCORERS: dict[str, Callable[..., dict]] = {
 }
 
 
+def _process_spec_scorer(problem_class: str) -> Callable[..., dict]:
+    """Regression lock for a loop problem class on frozen historical turns.
+
+    Pass iff the candidate satisfies the class ProcessSpec on every scored turn
+    and is never worse than the same-model control. Control is reported, not
+    required to fail — a regression recipe minted after a keep pins the fix.
+    """
+
+    def _score(store: ExperimentStore, control_id: str, variant_id: str, recipe: dict) -> dict:
+        from harness.agent.catalog import process_spec_for
+        from harness.agent.spec import clause_results, spec_rate
+
+        spec = process_spec_for(problem_class)
+        c_rows: list[dict] = []
+        v_rows: list[dict] = []
+        for job in recipe["jobs"]:
+            sid = str(job["shift"])
+            want = {int(t) for t in (job.get("turns") or [])}
+            keep = (lambda t: int(t.get("turn", -1)) in want) if want else (lambda t: True)
+            c_rows += [t for t in store.load_turns(control_id, sid) if keep(t)]
+            v_rows += [t for t in store.load_turns(variant_id, sid) if keep(t)]
+        c_rate = spec_rate(c_rows, spec)
+        v_rate = spec_rate(v_rows, spec)
+        failing = [
+            {"turn": t.get("turn"), "shift": t.get("shift_id") or t.get("shift"),
+             "clauses": {k: v for k, v in clause_results(t, spec).items() if not v}}
+            for t in v_rows
+            if not all(clause_results(t, spec).values())
+        ]
+        passed = bool(v_rows) and v_rate == 1.0 and (c_rate is None or v_rate >= c_rate)
+        return {
+            "scorer": problem_class,
+            "spec": spec.to_dict(),
+            "turns_scored": len(v_rows),
+            "control_spec_rate": c_rate,
+            "variant_spec_rate": v_rate,
+            "variant_failing_turns": failing,
+            "pass": passed,
+            "detail": (
+                "candidate satisfies the process spec on every scored turn"
+                if passed
+                else "candidate misses the process spec on at least one scored turn (or no turns)"
+            ),
+        }
+
+    _score.__name__ = f"_score_{problem_class}"
+    return _score
+
+
+# Catalog probes for loop classes whose gate is the ProcessSpec itself.
+SCORERS["photo_inspect"] = _process_spec_scorer("photo_without_inspect")
+SCORERS["ping_budget"] = _process_spec_scorer("ping_budget")
+
+
 def execute_recipe(
     name: str,
     *,

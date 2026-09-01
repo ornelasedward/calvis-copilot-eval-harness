@@ -19,3 +19,4 @@ _tmp_*.py
 
 # loop candidates; cx promote copies a kept one to a named variant
 variants/auto_*/
+.claude/

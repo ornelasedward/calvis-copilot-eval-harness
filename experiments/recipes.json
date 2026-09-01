@@ -126,7 +126,11 @@
         "est_usd": 1.2,
         "covers": ["escalation_ladder", "silent_guard"],
         "required_when": {
-          "files": ["scheduled_check_in.md", "holding_the_post.md", "obligations.md"],
+          "files": [
+            "scheduled_check_in.md", "holding_the_post.md", "obligations.md",
+            "identity.md", "context.md", "default.md", "session_start.md",
+            "approval_decision.md", "job_event.md", "operator_message.md"
+          ],
           "intents": ["escalation", "safety"]
         },
         "after": ["smoke-welcome"],

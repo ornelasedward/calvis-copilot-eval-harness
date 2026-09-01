@@ -139,11 +139,22 @@ def test_preserve_verdict_flags_dropped_welcome_or_reply():
 def test_unregistered_probe_is_never_a_pass():
     store = ExperimentStore(FIXTURE)
     result = run_targeted_scorer(
-        "photo_inspect", store, FIXTURE_CONTROL_RUN, FIXTURE_VARIANT_RUN, [{"shift": "50737"}]
+        "probe_that_does_not_exist", store, FIXTURE_CONTROL_RUN, FIXTURE_VARIANT_RUN, [{"shift": "50737"}]
     )
     assert result["pass"] is None
     assert "not registered" in result["detail"]
     assert run_targeted_scorer(None, store, "a", "b", [])["pass"] is None
+
+
+def test_process_spec_probes_are_registered_and_deterministic():
+    store = ExperimentStore(FIXTURE)
+    for probe in ("photo_inspect", "ping_budget"):
+        result = run_targeted_scorer(
+            probe, store, FIXTURE_CONTROL_RUN, FIXTURE_VARIANT_RUN, [{"shift": "50737"}]
+        )
+        assert result["pass"] in (True, False)
+        assert result["turns_scored"] > 0
+        assert "variant_spec_rate" in result
 
 
 # --------------------------------------------------------------------------
