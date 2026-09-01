@@ -26,6 +26,11 @@ from dotenv import load_dotenv
 
 load_dotenv(ROOT / ".env")
 
+# Windows consoles default to cp1252; reports use arrows and dashes.
+for _stream in (sys.stdout, sys.stderr):
+    if hasattr(_stream, "reconfigure"):
+        _stream.reconfigure(encoding="utf-8", errors="replace")
+
 
 def _help() -> None:
     print(
@@ -41,6 +46,7 @@ def _help() -> None:
   cx judge <run>             ADVISORY conduct checklist (never a gate)
   cx judge --pair <a> <b>    ADVISORY pairwise preference
   cx calibrate               ADVISORY judge vs gold labels
+  cx loop <shift> [-n]       eval-loop agent plan (see LOOP.md)
 
   Test codes:   wl=welcome  cl=claims  es=escalation  qt=quietness  vo=voice  ag=photo-gamer
                 pc=partial  pb=pushback  hs=hostile
@@ -54,6 +60,7 @@ Examples:
   .\\cx t es
   .\\cx why v3 -n
   .\\cx mine --dry
+  .\\cx loop 50737 -n
 """
     )
 
@@ -156,6 +163,24 @@ def main(argv: list[str] | None = None) -> None:
         from cli import main as cli_main
 
         cli_main(["calibrate", *rest])
+        return
+
+    if cmd == "loop":
+        if not rest:
+            sys.exit("usage: calvis loop <shift> [-n]")
+        from cli import cmd_loop
+        import argparse
+
+        shift = rest[0]
+        dry = "-n" in rest or "--dry-run" in rest
+        cmd_loop(
+            argparse.Namespace(
+                shift=shift,
+                dry_run=dry,
+                adapter="openai",
+                model="gpt-5.6-sol",
+            )
+        )
         return
 
     sys.exit(f"unknown command: {cmd}\nTry: py calvis.py help")

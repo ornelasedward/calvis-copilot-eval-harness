@@ -1,0 +1,17 @@
+---
+description: Eval-loop agent — JSON-mined problems; scorers own pass/fail
+alwaysApply: true
+---
+
+# Eval-loop agent
+
+When working on `harness/agent/`, `LOOP.md`, recipes, or prompt-eval flow:
+
+- Read `LOOP.md` before implementing. Sessions A–E are listed there.
+- Mine problems from shift JSON (`events` + `baseline`) only. Do not invent guard personas or synthetic replies.
+- Photos in the bundle are `[photo]` placeholders, not inspectable duplicates.
+- Deterministic scorers own PASS/FAIL. Diagnostician and patcher never flip a gate.
+- Live control is same-model original prompt, not historical baseline.
+- Improvement on static JSON is process-spec lift (`variant_spec_rate > control_spec_rate`) on frozen turns, plus preserve + holdout. Do not score later historical guard replies as outcomes.
+- One prompt file per iteration. Holdout safety (`55252` / catalog holdout) must not fail before keep.
+- Raise or implement `SessionTodo`; do not silently fake a stage.

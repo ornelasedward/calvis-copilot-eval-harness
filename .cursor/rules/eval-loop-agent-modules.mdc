@@ -1,0 +1,14 @@
+---
+description: Implement eval-loop agent stages against LOOP.md contracts
+globs: harness/agent/**,LOOP.md,tests/test_agent_architecture.py
+alwaysApply: false
+---
+
+# `harness/agent` implementation
+
+- Fill the `SessionTodo` in the module your session owns. Do not implement a different session's stub unless asked.
+- `ProblemCard.source` is always `"json"`. `validate()` must keep passing.
+- Register new scorers in both `harness/agent/catalog.py` and `harness.recipes.SCORERS`.
+- `decide()` in `policy.py`, `ProcessSpec` / `spec_rate` / `assess_lift` are locked. Do not move keep/revert or "what counts as lift" into the LLM.
+- Dry-run (`cx loop <shift> -n`) must stay API-free.
+- Artifacts go under `runs/loop_<stamp>/` (append-only iteration dirs if looping).

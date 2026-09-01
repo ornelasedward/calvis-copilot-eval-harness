@@ -410,6 +410,27 @@ def cmd_go(args: argparse.Namespace) -> None:
         sys.exit(1)
 
 
+def cmd_loop(args: argparse.Namespace) -> None:
+    """Eval-loop agent. Dry-run prints architecture plan (LOOP.md). Live needs Sessions A–D."""
+    import json
+
+    from harness.agent.orchestrator import run_loop
+    from harness.agent.types import LoopConfig
+
+    cfg = LoopConfig(
+        shift_id=str(args.shift),
+        dry_run=bool(args.dry_run),
+        adapter=getattr(args, "adapter", None) or "openai",
+        model=getattr(args, "model", None) or "gpt-5.6-sol",
+    )
+    result = run_loop(cfg)
+    print(json.dumps(result["plan"], indent=2))
+    print(f"\nwrote {result['out_dir']}/manifest.json")
+    if result.get("decision"):
+        print("\n=== decision ===")
+        print(json.dumps(result["decision"], indent=2))
+
+
 def cmd_analyze(args: argparse.Namespace) -> None:
     from harness.advisor import run_advisor
 
@@ -652,6 +673,21 @@ def main(argv: list[str] | None = None) -> None:
     cal.add_argument("--adapter", choices=["anthropic", "openai"], default=None)
     cal.add_argument("--model", default=None)
     cal.set_defaults(func=cmd_calibrate)
+
+    lp = sub.add_parser(
+        "loop",
+        help="Eval-loop agent: mine shift JSON → diagnose → patch → score (see LOOP.md)",
+    )
+    lp.add_argument("shift", help="Shift id (e.g. 50737). Dataset is shifts/<id>.json")
+    lp.add_argument("--adapter", choices=["anthropic", "openai"], default="openai")
+    lp.add_argument("--model", default="gpt-5.6-sol")
+    lp.add_argument(
+        "-n",
+        "--dry-run",
+        action="store_true",
+        help="Print architecture plan only; no API and no Session A–D",
+    )
+    lp.set_defaults(func=cmd_loop)
 
     args = p.parse_args(argv)
     args.func(args)
