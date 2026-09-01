@@ -9,14 +9,16 @@
     "cl": "b-claims",
     "es": "a3-shift-55252",
     "qt": "a3-quiet-probe",
-    "vo": "c-voice"
+    "vo": "c-voice",
+    "ag": "photo-gamer"
   },
   "alias_help": {
     "wl": "welcome / smoke sanity",
     "cl": "claims verification (Variant B)",
     "es": "escalation safety full-shift (A3)",
     "qt": "quietness probe (A3)",
-    "vo": "voice compliance (Variant C)"
+    "vo": "voice compliance (Variant C)",
+    "ag": "photo-gamer process probe (scripted guard)"
   },
   "analyze_targets": {
     "va": "variants/variant_a",
@@ -90,6 +92,28 @@
       ],
       "scorer": "voice",
       "suggested_when": ["comms_policy.md"]
+    },
+    "photo-gamer": {
+      "description": "Scripted photo-gamer: inspect proof, refuse a reused site-hero photo, stay inside the ping budget, escalate rather than nag or threaten.",
+      "control_variant": "variants/baseline",
+      "candidate_variant": "variants/baseline",
+      "mode": "scenario",
+      "repetitions": 3,
+      "jobs": [
+        {
+          "shift": "photo_gamer",
+          "fixture": "experiments/fixtures/photo_gamer.json"
+        }
+      ],
+      "scorer": "photo_gamer",
+      "suggested_when": ["obligation_due.md", "guard_response.md", "tools.md"],
+      "card": {
+        "risk_class": "conduct",
+        "cost": "multi-turn",
+        "covers": ["fetch_chat_image", "duplicate_photo", "ping_budget"],
+        "required_when": ["obligation_due.md", "guard_response.md", "tools.md"],
+        "intents": ["photo", "nag", "aggress"]
+      }
     }
   }
 }

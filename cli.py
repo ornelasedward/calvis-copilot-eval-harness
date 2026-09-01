@@ -318,7 +318,8 @@ def cmd_test(args: argparse.Namespace) -> None:
     )
     if args.dry_run:
         print(json.dumps(result["plan"], indent=2))
-        return
+        if result.get("score") is None:
+            return
     if result.get("pass") is False:
         sys.exit(1)
 
@@ -390,8 +391,8 @@ def main(argv: list[str] | None = None) -> None:
     t.add_argument("--model", default=None)
     t.add_argument("--variant", default=None, help="Override candidate variant path")
     t.add_argument("--control", default=None, help="Override control variant path")
-    t.add_argument("--repeat", type=int, default=1)
-    t.add_argument("--dry-run", action="store_true", help="Print plan only; no API calls")
+    t.add_argument("--repeat", type=int, default=None, help="Override recipe repetitions")
+    t.add_argument("--dry-run", action="store_true", help="Print plan only; no API calls (scenario recipes still run canned)")
     t.set_defaults(func=cmd_test)
 
     a = sub.add_parser(
