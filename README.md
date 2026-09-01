@@ -19,6 +19,41 @@ py -m pytest tests -q
 
 Add the API keys listed in `HARNESS.md` when you are ready to run a live model comparison.
 
+## The loop: shift → failures → patch → re-test → compare
+
+The main thing this harness does now. Point it at a recorded shift and it finds what the
+copilot got wrong that night, edits one prompt file, re-runs the same turns under the
+original and the patched prompt, checks the safety and conduct holdouts, and keeps the
+patch only if the target improved and nothing else broke.
+
+```powershell
+.\cx loop 50737 -n                 # dry: whole loop with canned models, zero API
+.\cx loop 50737 --budget 8         # live: mine -> diagnose -> patch -> score -> decide
+.\cx promote variants/auto_<stamp> variant_x   # a human makes a kept patch official
+```
+
+What happens, in order (`LOOP.md` is the contract, `harness/agent/` the code):
+
+1. **Mine** (`shifts/<id>.json`, no LLM) — evidence-cited problem cards: unverified
+   claims, photos accepted without inspection, third pings, surveillance voice, missed
+   escalations. Every card quotes the event and turn it came from.
+2. **Diagnose** (LLM, validated by code) — picks one card and the single prompt file to
+   change; it cannot invent a scorer, a file, or a verdict.
+3. **Patch** (LLM, enforced by code) — copies the parent prompt to `variants/auto_<stamp>/`
+   and edits exactly that file; second files and wholesale rewrites are refused.
+4. **Evaluate** (deterministic scorers) — original vs patched prompt on the card's turns,
+   plus the escalation-safety shift (`a3-shift-55252`) and the conduct floor
+   (`rules-dataset`, see `GUIDELINES.md`) as holdouts.
+5. **Decide** (code) — keep / revert / next card. A keep mints a regression recipe so the
+   fix can't be silently undone; kept variants wait for `cx promote`.
+
+Artifacts land under `runs/loop_<stamp>/iter_NN/` (cards, diagnosis, diff, score,
+decision). The guardrail throughout: only the copilot's own turn is scored — never how
+the guard reacted afterwards.
+
+To test a prompt you edited by hand instead: `.\cx go variants/<name>` picks and runs the
+right recipes for the files you changed (safety recipes can't be skipped).
+
 ---
 
 ## Original project brief
