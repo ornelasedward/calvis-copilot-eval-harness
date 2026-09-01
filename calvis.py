@@ -34,6 +34,9 @@ def _help() -> None:
   cx | cx ls                 list codes
   cx t <code> [-n]           run test recipe
   cx why <code> [-n]         analyze prompt vs baseline
+  cx judge <run>             ADVISORY conduct checklist (never a gate)
+  cx judge --pair <a> <b>    ADVISORY pairwise preference
+  cx calibrate               ADVISORY judge vs gold labels
 
   Test codes:   wl=welcome  cl=claims  es=escalation  qt=quietness
   Why codes:    va=A  v2=A2  v3=A3  vb=B
@@ -111,6 +114,18 @@ def main(argv: list[str] | None = None) -> None:
                 no_llm=no_llm,
             )
         )
+        return
+
+    if cmd in ("judge", "j"):
+        from cli import main as cli_main
+
+        cli_main(["judge", *rest])
+        return
+
+    if cmd in ("calibrate", "cal"):
+        from cli import main as cli_main
+
+        cli_main(["calibrate", *rest])
         return
 
     sys.exit(f"unknown command: {cmd}\nTry: py calvis.py help")

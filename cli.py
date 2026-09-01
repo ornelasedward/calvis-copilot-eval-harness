@@ -347,6 +347,63 @@ def cmd_analyze(args: argparse.Namespace) -> None:
     print(f"\nwrote {out['out_dir']}/advisor_report.md")
 
 
+def cmd_judge(args: argparse.Namespace) -> None:
+    """Advisory only — flags never become GATE pass/fail."""
+    from harness.judge import format_advisory_dashboard, run_checklist_on_run, run_pairwise
+
+    if args.pair:
+        out = run_pairwise(
+            args.pair[0],
+            args.pair[1],
+            shift=args.shift,
+            adapter=args.adapter,
+            model=args.model,
+        )
+        print(format_advisory_dashboard(out["control"], title=f"control {args.pair[0]}"))
+        print()
+        print(format_advisory_dashboard(out["variant"], title=f"variant {args.pair[1]}"))
+        print()
+        print(
+            format_advisory_dashboard(
+                {
+                    "items": [],
+                    "must_not_happen": [],
+                    "flagged": False,
+                    "agreement": out["preference"]["agreement"],
+                    "winner": out["preference"]["winner"],
+                },
+                title="pairwise preference",
+            )
+        )
+        print(f"wrote {out['wrote']}")
+        return
+    if not args.run_id:
+        sys.exit("usage: cx judge <run_id>  |  cx judge --pair <control_run> <variant_run>")
+    out = run_checklist_on_run(
+        args.run_id,
+        shift=args.shift,
+        adapter=args.adapter,
+        model=args.model,
+    )
+    print(format_advisory_dashboard(out))
+    print(f"wrote {out['wrote']}")
+
+
+def cmd_calibrate(args: argparse.Namespace) -> None:
+    """Print alignment vs gold labels. Low alignment must not fail the process."""
+    from harness.judge import format_alignment_report, run_calibration
+
+    gold = Path(args.gold) if args.gold else None
+    out = run_calibration(gold_path=gold, adapter=args.adapter, model=args.model)
+    print(format_alignment_report(out))
+    print(f"wrote {out['wrote']}")
+    if not out.get("n_labels"):
+        print(
+            "ADVISORY  gold labels are empty — humans fill "
+            "experiments/gold/conduct_labels.json (target 20-40 transcripts)"
+        )
+
+
 def main(argv: list[str] | None = None) -> None:
     p = argparse.ArgumentParser(prog="calvis-eval")
     sub = p.add_subparsers(dest="cmd", required=True)
@@ -409,6 +466,36 @@ def main(argv: list[str] | None = None) -> None:
     a.add_argument("--model", default="gpt-5.6-sol")
     a.add_argument("--no-llm", action="store_true", help="Facts + stub narrative only")
     a.set_defaults(func=cmd_analyze)
+
+    j = sub.add_parser(
+        "judge",
+        help="ADVISORY conduct checklist over a full transcript (never gates pass/fail)",
+    )
+    j.add_argument("run_id", nargs="?", default=None, help="Stored run to judge")
+    j.add_argument(
+        "--pair",
+        nargs=2,
+        metavar=("CONTROL_RUN", "VARIANT_RUN"),
+        default=None,
+        help="Pairwise advisory preference (order-swapped; reports position-bias)",
+    )
+    j.add_argument("--shift", default=None)
+    j.add_argument("--adapter", choices=["anthropic", "openai"], default=None)
+    j.add_argument("--model", default=None, help="Override judge.model (must differ from copilot)")
+    j.set_defaults(func=cmd_judge)
+
+    cal = sub.add_parser(
+        "calibrate",
+        help="ADVISORY: align conduct judge with gold labels (never a gate)",
+    )
+    cal.add_argument(
+        "--gold",
+        default=None,
+        help="Path to experiments/gold/conduct_labels.json",
+    )
+    cal.add_argument("--adapter", choices=["anthropic", "openai"], default=None)
+    cal.add_argument("--model", default=None)
+    cal.set_defaults(func=cmd_calibrate)
 
     args = p.parse_args(argv)
     args.func(args)

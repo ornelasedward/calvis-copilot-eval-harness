@@ -21,6 +21,9 @@ Set API keys in `.env`, then use the **short** launcher from the repo root:
 .\cx t qt             # quietness probe (A3)
 .\cx why v3           # advisor on Variant A3 diff
 .\cx why vb -n        # advisor on B, no LLM
+.\cx judge <run>      # ADVISORY conduct checklist (never a gate)
+.\cx judge --pair a b # ADVISORY pairwise preference
+.\cx calibrate        # ADVISORY judge vs gold labels
 ```
 
 | Code | Means |
@@ -55,7 +58,11 @@ py calvis.py t cl -n
 | `a3-shift-55252` | No missed escalations on 55252 turns 5–9 |
 | `a3-quiet-probe` | Quietness no-regression on clear no-op turns |
 
-Deterministic scorers own **PASS/FAIL**. The advisor only narrates.
+Deterministic scorers own **PASS/FAIL**. The advisor only narrates. The conduct
+checklist judge (`cx judge`, `cx calibrate`) is also **ADVISORY**: it prints
+must_not_happen flags and gold-label alignment, and never blocks or passes a run.
+Judge model is `defaults.judge.model` in `experiments/recipes.json` and must differ
+from the copilot model. Gold labels live in `experiments/gold/conduct_labels.json`.
 
 ## MVP shifts
 
