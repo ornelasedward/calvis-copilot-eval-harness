@@ -48,10 +48,17 @@
       "scorer": "welcome",
       "suggested_when": ["any prompt change"],
       "card": {
-        "intent": "session-start welcome DM is sent",
+        "intent": ["smoke", "welcome"],
         "risk_class": "smoke",
-        "covers": ["welcome", "session start"],
-        "required_when": ["any prompt change"]
+        "cost": "turn-cheap",
+        "est_usd": 0.05,
+        "covers": ["welcome"],
+        "required_when": {
+          "files": ["session_start.md"],
+          "intents": ["smoke", "welcome"]
+        },
+        "after": [],
+        "on_fail": []
       }
     },
     "b-claims": {
@@ -66,10 +73,17 @@
       "scorer": "verify_b",
       "suggested_when": ["guard_response.md"],
       "card": {
-        "intent": "verify patrol and work claims before affirming",
-        "risk_class": "verification",
-        "covers": ["work claim", "patrol claim", "rubber stamp", "location verification"],
-        "required_when": ["guard_response.md"]
+        "intent": ["claims"],
+        "risk_class": "lift",
+        "cost": "multi-turn",
+        "est_usd": 0.4,
+        "covers": ["claims_verification"],
+        "required_when": {
+          "files": ["guard_response.md"],
+          "intents": ["claims"]
+        },
+        "after": ["smoke-welcome"],
+        "on_fail": []
       }
     },
     "a3-shift-55252": {
@@ -84,10 +98,17 @@
       "scorer_args": {"focus_turns": [5, 6, 7, 8, 9]},
       "suggested_when": ["scheduled_check_in.md"],
       "card": {
-        "intent": "silent-guard escalation ladder is followed without missed flags",
+        "intent": ["escalation", "safety"],
         "risk_class": "safety",
-        "covers": ["silent guard", "escalation ladder", "unanswered check-in", "missed escalation"],
-        "required_when": ["scheduled_check_in.md"]
+        "cost": "full-shift",
+        "est_usd": 1.2,
+        "covers": ["escalation_ladder", "silent_guard"],
+        "required_when": {
+          "files": ["scheduled_check_in.md", "holding_the_post.md", "obligations.md"],
+          "intents": ["escalation", "safety"]
+        },
+        "after": ["smoke-welcome"],
+        "on_fail": []
       }
     },
     "a3-quiet-probe": {
@@ -101,10 +122,17 @@
       "scorer": "quietness",
       "suggested_when": ["scheduled_check_in.md"],
       "card": {
-        "intent": "no discretionary DMs on clear no-op turns",
-        "risk_class": "quietness",
-        "covers": ["nagging", "quietness", "unnecessary check-in", "discretionary dm"],
-        "required_when": ["scheduled_check_in.md"]
+        "intent": ["quietness"],
+        "risk_class": "lift",
+        "cost": "turn-cheap",
+        "est_usd": 0.12,
+        "covers": ["dm_rate", "nagging"],
+        "required_when": {
+          "files": ["scheduled_check_in.md"],
+          "intents": ["quietness"]
+        },
+        "after": ["smoke-welcome"],
+        "on_fail": ["a3-shift-55252"]
       }
     },
     "c-voice": {
@@ -119,10 +147,17 @@
       "scorer": "voice",
       "suggested_when": ["comms_policy.md"],
       "card": {
-        "intent": "comms voice compliance: no em-dashes, filler, or multi-DM",
-        "risk_class": "voice",
-        "covers": ["em-dash", "sign-off filler", "multi-dm", "voice compliance"],
-        "required_when": ["comms_policy.md"]
+        "intent": ["voice"],
+        "risk_class": "compliance",
+        "cost": "multi-turn",
+        "est_usd": 0.55,
+        "covers": ["voice_rules"],
+        "required_when": {
+          "files": ["comms_policy.md"],
+          "intents": ["voice"]
+        },
+        "after": ["smoke-welcome"],
+        "on_fail": []
       }
     }
   }

@@ -869,9 +869,32 @@ def modes_from_signals(flagged: list[dict]) -> list[dict]:
 # Stage 3 — catalog gap analysis
 # ---------------------------------------------------------------------------
 
+def _norm_phrase(text: str) -> str:
+    return re.sub(r"[\s_-]+", " ", (text or "").lower()).strip()
+
+
+def _textish(value: Any) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, str):
+        return value
+    if isinstance(value, dict):
+        return " ".join(_textish(v) for v in value.values())
+    if isinstance(value, (list, tuple)):
+        return " ".join(_textish(v) for v in value)
+    return str(value)
+
+
 def _card_blob(card: dict) -> str:
     covers = card.get("covers") or []
-    return " ".join([card.get("intent") or "", card.get("recipe") or ""] + list(covers))
+    return " ".join(
+        [
+            _textish(card.get("intent")),
+            _textish(card.get("description")),
+            card.get("recipe") or "",
+        ]
+        + [str(c) for c in covers]
+    )
 
 
 def _mode_blob(mode: dict) -> str:
@@ -879,14 +902,16 @@ def _mode_blob(mode: dict) -> str:
 
 
 def _phrase_hit(mode: dict, card: dict) -> bool:
-    hay = _mode_blob(mode).lower()
-    phrases = [str(c).lower() for c in (card.get("covers") or [])]
-    intent = (card.get("intent") or "").lower()
+    hay = _norm_phrase(_mode_blob(mode))
+    phrases = [_norm_phrase(str(c)) for c in (card.get("covers") or [])]
+    intent = _norm_phrase(_textish(card.get("intent")))
     if intent:
         phrases.append(intent)
-    name = (mode.get("name") or "").lower()
+    desc = _norm_phrase(_textish(card.get("description")))
+    if desc:
+        phrases.append(desc)
+    name = _norm_phrase(mode.get("name") or "")
     for p in phrases:
-        p = p.strip()
         if not p:
             continue
         if p in hay or name in p or p in name:

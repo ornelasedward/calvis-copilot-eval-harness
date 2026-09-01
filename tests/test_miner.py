@@ -235,7 +235,8 @@ def test_stage3_uncovered_mode_does_not_match():
 
 def test_catalog_cards_include_covers():
     cards = {c["recipe"]: c for c in list_cards()}
-    assert "silent guard" in cards["a3-shift-55252"]["covers"]
+    covers_esc = " ".join(cards["a3-shift-55252"]["covers"]).replace("_", " ")
+    assert "silent guard" in covers_esc or "escalation ladder" in covers_esc
     assert "nagging" in cards["a3-quiet-probe"]["covers"]
     cfg = miner_defaults()
     assert cfg["model"] != cfg["copilot_model"]

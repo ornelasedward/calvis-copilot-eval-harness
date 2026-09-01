@@ -40,16 +40,46 @@ def miner_defaults(path: Path | None = None) -> dict:
 def list_cards(path: Path | None = None) -> list[dict]:
     """Catalog cards used by the miner gap analysis (covers + intent)."""
     data = load_recipes(path)
+
+    def _as_text(value: Any) -> str:
+        if value is None:
+            return ""
+        if isinstance(value, str):
+            return value
+        if isinstance(value, dict):
+            return " ".join(_as_text(v) for v in value.values())
+        if isinstance(value, (list, tuple)):
+            return " ".join(_as_text(v) for v in value)
+        return str(value)
+
+    def _as_list(value: Any) -> list[str]:
+        if value is None:
+            return []
+        if isinstance(value, str):
+            return [value]
+        if isinstance(value, dict):
+            out: list[str] = []
+            for v in value.values():
+                out.extend(_as_list(v))
+            return out
+        if isinstance(value, (list, tuple)):
+            out = []
+            for v in value:
+                out.extend(_as_list(v))
+            return out
+        return [str(value)]
+
     rows = []
     for name, r in (data.get("recipes") or {}).items():
         card = dict(r.get("card") or {})
         rows.append(
             {
                 "recipe": name,
-                "intent": card.get("intent") or r.get("description") or "",
+                "intent": _as_text(card.get("intent")) or (r.get("description") or ""),
+                "description": r.get("description") or "",
                 "risk_class": card.get("risk_class") or "",
-                "covers": list(card.get("covers") or []),
-                "required_when": list(
+                "covers": _as_list(card.get("covers")),
+                "required_when": _as_list(
                     card.get("required_when") or r.get("suggested_when") or []
                 ),
             }
