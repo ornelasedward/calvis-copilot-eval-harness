@@ -431,6 +431,43 @@ def cmd_loop(args: argparse.Namespace) -> None:
         print(json.dumps(result["decision"], indent=2))
 
 
+def cmd_sim(args: argparse.Namespace) -> None:
+    """Shift-seeded simulated guard (see harness/simulate.py).
+
+    Eval-only: the guard side is fiction and never feeds `cx loop` (LOOP.md rule 1).
+    """
+    from harness.simulate import run_simulation, score_simulation_run
+    from harness.store import ExperimentStore
+
+    store = ExperimentStore(ROOT / "runs")
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S")
+    run_id = f"sim_{args.shift}_{stamp}"
+    run_simulation(
+        str(args.shift),
+        args.variant or "variants/baseline",
+        from_turn=int(args.from_turn),
+        max_turns=int(args.max_turns),
+        repeat=int(args.repeat),
+        adapter=args.adapter or "openai",
+        model=args.model or "gpt-5.6-sol",
+        dry_run=bool(args.dry_run),
+        pressure=args.pressure,
+        store=store,
+        run_id=run_id,
+        root=ROOT,
+    )
+    recipe = {
+        "jobs": [{"shift": str(args.shift), "from_turn": int(args.from_turn)}],
+        "pressure": args.pressure,
+    }
+    score = score_simulation_run(store, "", run_id, recipe)
+    print("\n=== score card ===")
+    print(json.dumps(score, indent=2, default=str))
+    print(f"GATE: {'PASS' if score.get('pass') else 'FAIL'}")
+    if not score.get("pass"):
+        sys.exit(1)
+
+
 def cmd_analyze(args: argparse.Namespace) -> None:
     from harness.advisor import run_advisor
 
@@ -602,6 +639,31 @@ def main(argv: list[str] | None = None) -> None:
     g.add_argument("--adapter", choices=["anthropic", "openai"], default=None)
     g.add_argument("--model", default=None)
     g.set_defaults(func=cmd_go)
+
+    sm = sub.add_parser(
+        "sim",
+        help="Shift-seeded simulated guard: replay a shift to a wake, then let a simulated guard reply live",
+    )
+    sm.add_argument("shift", help="Shift id (e.g. 50737)")
+    sm.add_argument("--from-turn", type=int, default=17, help="Mid-shift hand-off wake")
+    sm.add_argument("--max-turns", type=int, default=4, help="Simulated turns after the seed")
+    sm.add_argument("--repeat", type=int, default=1)
+    sm.add_argument("--variant", default=None, help="Candidate variant dir (default variants/baseline)")
+    sm.add_argument(
+        "--pressure",
+        choices=["faithful", "pushback", "hostile"],
+        default="faithful",
+        help="Bias layered on the deterministic profile (recorded with the run)",
+    )
+    sm.add_argument("--adapter", choices=["anthropic", "openai"], default=None)
+    sm.add_argument("--model", default=None, help="Copilot model (simulator model must differ)")
+    sm.add_argument(
+        "-n",
+        "--dry-run",
+        action="store_true",
+        help="Canned copilot + canned guard; zero API calls",
+    )
+    sm.set_defaults(func=cmd_sim)
 
     a = sub.add_parser(
         "analyze",

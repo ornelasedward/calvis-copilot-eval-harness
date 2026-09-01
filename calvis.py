@@ -46,10 +46,11 @@ def _help() -> None:
   cx judge <run>             ADVISORY conduct checklist (never a gate)
   cx judge --pair <a> <b>    ADVISORY pairwise preference
   cx calibrate               ADVISORY judge vs gold labels
+  cx sim <shift> [-n]        shift-seeded simulated guard (never feeds cx loop)
   cx loop <shift> [-n]       eval-loop agent plan (see LOOP.md)
 
   Test codes:   wl=welcome  cl=claims  es=escalation  qt=quietness  vo=voice  ag=photo-gamer
-                pc=partial  pb=pushback  hs=hostile
+                pc=partial  pb=pushback  hs=hostile  sm=simulated guard (50737)
   Why codes:    va=A  v2=A2  v3=A3  vb=B  vc=C
 
 Examples:
@@ -60,6 +61,7 @@ Examples:
   .\\cx t es
   .\\cx why v3 -n
   .\\cx mine --dry
+  .\\cx sim 50737 --from-turn 17 --pressure pushback -n
   .\\cx loop 50737 -n
 """
     )
@@ -88,7 +90,7 @@ def main(argv: list[str] | None = None) -> None:
 
     if cmd in ("t", "test"):
         if not rest:
-            sys.exit("usage: calvis t <wl|cl|es|qt|vo|ag|pc|pb|hs> [-n]")
+            sys.exit("usage: calvis t <wl|cl|es|qt|vo|ag|pc|pb|hs|sm> [-n]")
         recipe = rest[0]
         dry = "-n" in rest or "--dry-run" in rest
         from cli import cmd_test
@@ -163,6 +165,17 @@ def main(argv: list[str] | None = None) -> None:
         from cli import main as cli_main
 
         cli_main(["calibrate", *rest])
+        return
+
+    if cmd in ("sim", "s"):
+        if not rest:
+            sys.exit(
+                "usage: calvis sim <shift> [--from-turn N] "
+                "[--pressure faithful|pushback|hostile] [--variant v3] [-n]"
+            )
+        from cli import main as cli_main
+
+        cli_main(["sim", *rest])
         return
 
     if cmd == "loop":

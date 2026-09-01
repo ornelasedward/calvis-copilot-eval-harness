@@ -73,7 +73,7 @@ class TurnResult:
     turn: int
     trigger: str
     ts: str
-    mode: Literal["turn", "shift", "baseline_import", "scenario"]
+    mode: Literal["turn", "shift", "baseline_import", "scenario", "simulation"]
     decision: Decision
     messages: list[MessageAction] = field(default_factory=list)
     escalations: list[EscalationAction] = field(default_factory=list)

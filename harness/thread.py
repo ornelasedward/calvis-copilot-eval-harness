@@ -92,6 +92,26 @@ class ThreadManager:
     def record_variant_message(self, ts: datetime, text: str) -> None:
         self._variant_copilot.append(ChatMessage(ts=ts, role="copilot", text=text))
 
+    def truncate_guard_history(self, as_of: datetime) -> None:
+        """Drop recorded guard messages after `as_of`.
+
+        Used by the shift-seeded simulator: past the hand-off point that night's
+        guard never saw the new copilot's DMs, so their later messages must not
+        leak into history. Injected (simulated) messages are added afterwards.
+        """
+        self._guard = [m for m in self._guard if m.ts <= as_of]
+
+    def seed_variant_from_baseline(self, as_of: datetime) -> None:
+        """Copy production copilot messages up to `as_of` into the variant thread.
+
+        Gives shift mode a real conversation to inherit before the variant takes
+        over mid-shift; messages after `as_of` are never copied.
+        """
+        self._variant_copilot = [
+            m for m in self._baseline_copilot if m.ts <= as_of
+        ] + [m for m in self._variant_copilot if m.ts > as_of]
+        self._variant_copilot.sort(key=lambda m: m.ts)
+
     def record_guard_message(
         self,
         ts: datetime,
