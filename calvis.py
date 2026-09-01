@@ -46,7 +46,9 @@ def _help() -> None:
   cx judge <run>             ADVISORY conduct checklist (never a gate)
   cx judge --pair <a> <b>    ADVISORY pairwise preference
   cx calibrate               ADVISORY judge vs gold labels
-  cx loop <shift> [-n]       eval-loop agent plan (see LOOP.md)
+  cx loop <shift> [-n]       eval-loop agent (see LOOP.md)
+       [--max-iterations N] [--budget USD] [--no-mint] [--compound]
+  cx promote <auto> <name>   copy a kept variants/auto_* to a named variant
 
   Test codes:   wl=welcome  cl=claims  es=escalation  qt=quietness  vo=voice  ag=photo-gamer
                 pc=partial  pb=pushback  hs=hostile
@@ -61,6 +63,8 @@ Examples:
   .\\cx why v3 -n
   .\\cx mine --dry
   .\\cx loop 50737 -n
+  .\\cx loop 50737 --budget 2.0 --max-iterations 3
+  .\\cx promote variants/auto_20250101T000000 variant_d
 """
     )
 
@@ -167,18 +171,46 @@ def main(argv: list[str] | None = None) -> None:
 
     if cmd == "loop":
         if not rest:
-            sys.exit("usage: calvis loop <shift> [-n]")
+            sys.exit("usage: calvis loop <shift> [-n] [--max-iterations N] [--budget USD] [--no-mint]")
         from cli import cmd_loop
         import argparse
 
         shift = rest[0]
         dry = "-n" in rest or "--dry-run" in rest
+
+        def _opt(flag: str, cast):
+            if flag not in rest:
+                return None
+            try:
+                return cast(rest[rest.index(flag) + 1])
+            except (IndexError, ValueError):
+                sys.exit(f"usage: calvis loop <shift> {flag} <value>")
+
         cmd_loop(
             argparse.Namespace(
                 shift=shift,
                 dry_run=dry,
                 adapter="openai",
                 model="gpt-5.6-sol",
+                max_iterations=_opt("--max-iterations", int) or 3,
+                budget=_opt("--budget", float),
+                no_mint="--no-mint" in rest,
+                compound="--compound" in rest,
+            )
+        )
+        return
+
+    if cmd in ("promote", "pr"):
+        if len(rest) < 2:
+            sys.exit("usage: calvis promote <variants/auto_...> <named_variant> [--yes]")
+        from cli import cmd_promote
+        import argparse
+
+        cmd_promote(
+            argparse.Namespace(
+                auto_variant=rest[0],
+                named_variant=rest[1],
+                yes="--yes" in rest or "-y" in rest,
             )
         )
         return

@@ -29,6 +29,7 @@ Set API keys in `.env`, then use the **short** launcher from the repo root:
 .\cx judge <run>      # ADVISORY conduct checklist (never a gate)
 .\cx judge --pair a b # ADVISORY pairwise preference
 .\cx calibrate        # ADVISORY judge vs gold labels
+.\cx loop 50737 -n    # eval-loop agent, API-free (see "Eval loop" below)
 ```
 
 | Code | Means |
@@ -99,6 +100,68 @@ plans and a diff; omitting `--rank` is compiler-only. The ranker never declares
 pass/fail. Judge model is `defaults.judge.model` in `experiments/recipes.json` and
 must differ from the copilot model. Gold labels live in
 `experiments/gold/conduct_labels.json`.
+
+## Eval loop (`cx loop`) — iterations, compounding, minting, promote
+
+The self-improvement loop (contract: `LOOP.md`, package: `harness/agent/`) mines
+problems out of a shift JSON, patches one prompt file, replays control vs
+variant, and lets `policy.decide` — not an LLM — say keep / revert / next_card /
+stop.
+
+```bash
+.\cx loop 50737 -n                       # API-free: deterministic pick + stored fixture scores
+.\cx loop 50737 --max-iterations 3       # live (needs Sessions B/C)
+.\cx loop 50737 --budget 2.00            # stop before the estimate crosses $2
+.\cx loop 50737 --no-mint                # do not append a regression recipe on a keep
+.\cx loop 50737 --compound               # keep going after a keep, on top of the kept variant
+.\cx promote variants/auto_2026… variant_d   # human-only, prints the diff and asks
+```
+
+**Artifacts** — one directory per run under `runs/loop_<stamp>/`, append-only
+(an iteration file is written once; only the root manifest is refreshed):
+
+```
+runs/loop_<stamp>/
+  manifest.json          shift, cap, model, budget, spend estimate, per-iteration index
+  iter_01/cards.json     miner output + which card this iteration took
+  iter_01/diagnosis.json chosen card, intent triple, target file, scorer
+  iter_01/patch.diff     unified diff of the ONE changed prompt file
+  iter_01/score.json     ScoreCard (deterministic scorers + ProcessSpec clauses)
+  iter_01/decision.json  decide() action + reason, mint info, generalization info
+  iter_02/…              next_card advanced to the next mined card
+```
+
+**Iteration control.** `next_card` retires the tried card and diagnoses the next
+one in the miner's severity order; `keep` / `revert` / `stop` end the run; the
+run never exceeds `--max-iterations` (LOOP.md hard rule 7).
+
+**Compounding.** After a keep the kept `variants/auto_*` becomes the parent
+prompt *and* the evaluator's same-model control for the next iteration in that
+run (`--compound`). `variants/baseline` is never modified by any loop path.
+
+**Regression minting** (the self-build step). Every keep appends a recipe
+`regress-<class>-<shift>-<stamp>` to `experiments/recipes.json` pinning the
+card's shift + turns + the catalog scorer, with the kept variant as candidate
+and a card `{"risk_class": "regression", "minted_by": "loop"}`. It is strictly
+additive — an existing recipe is never rewritten or deleted, a name collision
+gets a numbered suffix — and the loop prints what it minted, so the next
+`cx ls` / `cx t <name>` runs the new lock. `--no-mint` turns it off.
+
+**Generalization spot-check.** Before a keep is advertised, if another shift
+mines the same problem class the loop reports that shift's `spec_rate` for the
+kept variant vs control in `decision.json`. It is labelled `"gate": false` and
+is never an input to `decide` — a good number cannot rescue a failed holdout and
+a bad one cannot veto a real lift.
+
+**Budget.** `--budget` estimates per-iteration cost from the catalog mode
+(`turn` scores the card's turns, `shift` replays the whole shift; both arms plus
+the holdout are charged) and stops with reason `budget` *before* the next
+iteration would exceed it. The estimate and the running spend land in
+`manifest.json`. A dry run costs nothing.
+
+**Promote is human-only.** The loop never promotes. `cx promote <auto> <name>`
+prints the diff vs baseline, asks for confirmation (`--yes` skips), refuses to
+overwrite an existing named variant, and refuses `variants/baseline` as a target.
 
 ## MVP shifts
 

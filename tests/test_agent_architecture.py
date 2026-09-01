@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pytest
@@ -226,8 +227,30 @@ def test_dry_run_loop_writes_plan(tmp_path):
     assert "unverified_claim" in manifest
 
 
-def test_live_loop_runs_the_miner_then_stops_at_session_b(tmp_path):
+def test_live_loop_runs_the_miner_then_reports_the_unfinished_session(tmp_path):
+    """An unbuilt stage stops the run and is reported — never stubbed around.
+
+    Session E catches `SessionTodo` so the CLI prints which session is missing
+    instead of dumping a traceback, but it writes no decision: a stage that did
+    not run cannot produce a gate.
+    """
     cfg = LoopConfig(shift_id="50737", dry_run=False)
-    with pytest.raises(SessionTodo) as ei:
-        run_loop(cfg, root=tmp_path)
-    assert ei.value.session == "B"
+    result = run_loop(cfg, root=tmp_path, printer=lambda _s: None)
+    assert result["decision"] is None
+    assert result["blocked_session"] in ("B", "C", "D")
+    assert result["stopped_reason"].startswith("blocked:")
+    manifest = json.loads(
+        (Path(result["out_dir"]) / "manifest.json").read_text(encoding="utf-8")
+    )
+    assert manifest["final_action"] is None
+    assert SessionTodo.__name__  # the error type is still the signal
+
+
+def test_loop_stage_functions_are_injectable(tmp_path):
+    """Sessions A–D are defaults, not hard dependencies (that is what lets
+    Session E be built and tested while B/C are still landing)."""
+    import inspect
+
+    params = inspect.signature(run_loop).parameters
+    for name in ("mine_fn", "diagnose_fn", "patch_fn", "evaluate_fn", "decide_fn"):
+        assert name in params
