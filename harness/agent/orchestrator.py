@@ -101,7 +101,8 @@ def loop_plan(
             for k, v in CLASS_CATALOG.items()
         },
         "rules": [
-            "cards from shift JSON only (no personas)",
+            "cards from shift JSON or a FAILED scripted scenario; "
+            "no personas, no simulated guards",
             "scorers own pass/fail",
             "same-model original prompt is the control",
             "lift is variant_spec_rate > control_spec_rate on frozen turns",

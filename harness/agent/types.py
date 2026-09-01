@@ -7,6 +7,7 @@ from typing import Any, Literal
 
 
 ProblemClass = Literal[
+    # mined from a shift JSON (source="json")
     "unverified_claim",
     "photo_without_inspect",
     "hammer_after_photo",
@@ -14,14 +15,34 @@ ProblemClass = Literal[
     "surveillance_voice",
     "pushback_failure",
     "under_escalation",
+    # mined from a FAILED deterministic scripted scenario (source="scenario").
+    # One class per scenario gate, so the card names the gate that failed.
+    "uninspected_photo",
+    "rubber_stamped_duplicate",
+    "third_ping",
+    "threat_language",
+    "ignored_partial_credit",
+    "reasked_whole_window",
+    "premature_window_close",
+    "partial_ping_budget",
+    "caved_on_pushback",
+    "dropped_next_window",
+    "pushback_threat",
+    "pushback_dm_budget",
+    "hostile_surveillance_line",
+    "hostile_retaliation",
+    "character_judgment_escalation",
 ]
 
 Severity = Literal["safety", "conduct", "lift", "compliance"]
 DecisionAction = Literal["keep", "revert", "next_card", "stop"]
-CardSource = Literal["json"]
+#: Where a card came from. LOOP.md hard rule 1: shift JSON or a failed scripted
+#: scenario. Never an LLM-simulated guard (sim-*), never a persona.
+CardSource = Literal["json", "scenario"]
+CARD_SOURCES: tuple[CardSource, ...] = ("json", "scenario")
 
 
-PROBLEM_CLASSES: tuple[ProblemClass, ...] = (
+JSON_PROBLEM_CLASSES: tuple[ProblemClass, ...] = (
     "unverified_claim",
     "photo_without_inspect",
     "hammer_after_photo",
@@ -29,6 +50,29 @@ PROBLEM_CLASSES: tuple[ProblemClass, ...] = (
     "surveillance_voice",
     "pushback_failure",
     "under_escalation",
+)
+
+SCENARIO_PROBLEM_CLASSES: tuple[ProblemClass, ...] = (
+    "uninspected_photo",
+    "rubber_stamped_duplicate",
+    "third_ping",
+    "threat_language",
+    "ignored_partial_credit",
+    "reasked_whole_window",
+    "premature_window_close",
+    "partial_ping_budget",
+    "caved_on_pushback",
+    "dropped_next_window",
+    "pushback_threat",
+    "pushback_dm_budget",
+    "hostile_surveillance_line",
+    "hostile_retaliation",
+    "character_judgment_escalation",
+)
+
+PROBLEM_CLASSES: tuple[ProblemClass, ...] = (
+    *JSON_PROBLEM_CLASSES,
+    *SCENARIO_PROBLEM_CLASSES,
 )
 
 
@@ -62,7 +106,12 @@ class ProcessSpec:
 
 @dataclass
 class Evidence:
-    """Pointers into the shift JSON. Empty evidence invalidates the card."""
+    """Pointers into the shift JSON, or into a failed scenario run.
+
+    Empty evidence invalidates the card. For `source="scenario"` cards the
+    citation is the recorded run: which gate failed, in which fixture, in which
+    run directory, plus the failing turn's DMs and tools.
+    """
 
     guard_text: str | None = None
     baseline_dms: list[str] = field(default_factory=list)
@@ -71,6 +120,10 @@ class Evidence:
     event_indexes: list[int] = field(default_factory=list)
     baseline_indexes: list[int] = field(default_factory=list)
     notes: list[str] = field(default_factory=list)
+    # scenario-only pointers (None / empty for JSON-mined cards)
+    scenario_run_id: str | None = None
+    fixture: str | None = None
+    failed_gate: str | None = None
 
     def has_citation(self) -> bool:
         return bool(
@@ -80,6 +133,8 @@ class Evidence:
             or self.baseline_dms
             or self.baseline_tools
             or self.missing_tools
+            or self.failed_gate
+            or self.scenario_run_id
         )
 
 
@@ -99,8 +154,11 @@ class ProblemCard:
         return asdict(self)
 
     def validate(self) -> None:
-        if self.source != "json":
-            raise ValueError("ProblemCard.source must be 'json' (no personas)")
+        if self.source not in CARD_SOURCES:
+            raise ValueError(
+                "ProblemCard.source must be 'json' (shift bundle) or 'scenario' "
+                "(failed scripted scenario) — no personas, no simulated guards"
+            )
         if not self.turns:
             raise ValueError("ProblemCard.turns must cite at least one turn")
         if not self.evidence.has_citation():
@@ -123,7 +181,7 @@ class Diagnosis:
     holdout_recipe: str | None
     rationale: str
     spec: ProcessSpec = field(default_factory=ProcessSpec)
-    mode: Literal["turn", "shift"] = "turn"
+    mode: Literal["turn", "shift", "scenario"] = "turn"
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)

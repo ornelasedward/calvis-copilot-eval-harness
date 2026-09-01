@@ -8,6 +8,7 @@ Scorers own pass/fail. No embeddings in the compiler path.
 
 from __future__ import annotations
 
+import inspect
 import json
 import os
 import re
@@ -495,14 +496,45 @@ def save_plan(plan: dict[str, Any], runs_dir: Path | None = None) -> Path:
     return path
 
 
+def recipe_repetitions(recipe: dict | None) -> int:
+    """How many times one recipe must pass (pass^k). Turn/shift recipes: 1.
+
+    Scenario and simulation recipes declare `repetitions` in recipes.json;
+    running them once is a weaker gate than `cx t` applies, which is how a
+    scripted scenario used to slip through `cx go`.
+    """
+    try:
+        return max(1, int((recipe or {}).get("repetitions") or 1))
+    except (TypeError, ValueError):
+        return 1
+
+
+def _call_execute(
+    execute_fn: Callable[..., dict[str, Any]], rid: str, repeat: int
+) -> dict[str, Any]:
+    """Pass `repeat` when the executor accepts it; stay compatible when not."""
+    try:
+        params = inspect.signature(execute_fn).parameters
+    except (TypeError, ValueError):  # builtins / C callables
+        return execute_fn(rid)
+    accepts = "repeat" in params or any(
+        p.kind is inspect.Parameter.VAR_KEYWORD for p in params.values()
+    )
+    return execute_fn(rid, repeat=repeat) if accepts else execute_fn(rid)
+
+
 def execute_plan(
     plan: dict[str, Any],
     *,
-    execute_fn: Callable[[str], dict[str, Any]],
+    execute_fn: Callable[..., dict[str, Any]],
     recipes_data: dict | None = None,
     recipes_path: Path | None = None,
 ) -> dict[str, Any]:
-    """Run `order` via execute_fn. Stop rules only; scorers own verdicts."""
+    """Run `order` via execute_fn. Stop rules only; scorers own verdicts.
+
+    Each recipe runs at its own `repetitions` (pass^k), so `cx go` gates a
+    scenario exactly as hard as `cx t` does.
+    """
     data = recipes_data if recipes_data is not None else load_recipes(recipes_path)
     recipes: dict[str, dict] = dict(data.get("recipes") or {})
 
@@ -525,10 +557,12 @@ def execute_plan(
             seen.add(rid)
             print(f"skip {rid}: safety fail -> no lift recipes")
             continue
-        print(f"=== go: execute {rid} ===")
-        result = execute_fn(rid)
+        reps = recipe_repetitions(recipes.get(rid))
+        suffix = f" (pass^{reps})" if reps > 1 else ""
+        print(f"=== go: execute {rid}{suffix} ===")
+        result = _call_execute(execute_fn, rid, reps)
         passed = result.get("pass")
-        results.append({"id": rid, "pass": passed, "result": result})
+        results.append({"id": rid, "pass": passed, "repetitions": reps, "result": result})
         seen.add(rid)
         if rid == SMOKE_ID and passed is False:
             halted = True
@@ -550,6 +584,76 @@ def execute_plan(
         "skipped_remaining": skipped_remaining,
         "safety_failed": safety_failed,
     }
+
+
+# ---------------------------------------------------------------------------
+# self-fix hand-off: a failed scripted scenario is something `cx loop` can mine
+# ---------------------------------------------------------------------------
+
+
+def failed_scenario_runs(outcome: dict[str, Any]) -> list[dict[str, Any]]:
+    """Failed recipes from `execute_plan`, split into loop-eligible or not.
+
+    A *deterministic scripted* scenario failure (photo-gamer, partial, pushback,
+    hostile) is evidence `cx loop` may mine. A simulated-guard failure
+    (`sim-*`) is not: LOOP.md hard rule 1 keeps it holdout-only.
+    """
+    from harness.agent.catalog import LOOP_ELIGIBLE_SCORERS, SCENARIO_RECIPE_NAMES
+
+    rows: list[dict[str, Any]] = []
+    for row in outcome.get("results") or []:
+        if row.get("pass") is not False:
+            continue
+        result = dict(row.get("result") or {})
+        plan = dict(result.get("plan") or {})
+        mode = str(plan.get("mode") or "")
+        if mode not in ("scenario", "simulation"):
+            continue
+        recipe = str(plan.get("recipe") or row.get("id") or "")
+        scorer = str(plan.get("scorer") or "")
+        loop_eligible = (
+            mode == "scenario"
+            and recipe in SCENARIO_RECIPE_NAMES
+            and scorer in LOOP_ELIGIBLE_SCORERS
+        )
+        rows.append(
+            {
+                "recipe": recipe,
+                "mode": mode,
+                "scorer": scorer,
+                "run_id": plan.get("variant_run_id"),
+                "repetitions": plan.get("repetitions") or row.get("repetitions"),
+                "loop_eligible": loop_eligible,
+                "detail": (result.get("score") or {}).get("detail"),
+            }
+        )
+    return rows
+
+
+def format_self_fix_hint(failures: list[dict[str, Any]]) -> str:
+    """Exactly how to hand a failed scenario to the loop (or why we cannot)."""
+    if not failures:
+        return ""
+    lines = ["", "=== self-fix ==="]
+    for row in failures:
+        if row["loop_eligible"] and row.get("run_id"):
+            lines.append(f"{row['recipe']} FAILED: {row.get('detail') or 'gate failure'}")
+            lines.append(f"  cx loop --from-run runs/{row['run_id']}")
+            lines.append(f"  (or: py cli.py loop --from-run runs/{row['run_id']})")
+            lines.append(
+                "  add -n for an API-free dry loop, or re-run with `cx go --fix` "
+                "to do it now"
+            )
+        else:
+            lines.append(
+                f"{row['recipe']} FAILED: {row.get('detail') or 'gate failure'} "
+                "— simulation-only evidence"
+            )
+            lines.append(
+                "  cx loop never mines a simulated guard (LOOP.md hard rule 1); "
+                "read the run and edit the prompt by hand."
+            )
+    return "\n".join(lines)
 
 
 def confirm_execute(*, yes: bool) -> bool:

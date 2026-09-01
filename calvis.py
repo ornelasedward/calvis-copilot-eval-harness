@@ -52,6 +52,8 @@ def _help() -> None:
   cx calibrate               ADVISORY judge vs gold labels
   cx sim <shift> [-n]        shift-seeded simulated guard (never feeds cx loop)
   cx loop <shift> [-n]       eval-loop agent (see LOOP.md)
+  cx loop --from-run <run>   self-fix a FAILED scripted-scenario run
+  cx loop --from-scenario ag run a scripted scenario, self-fix it if it fails
        [--max-iterations N] [--budget USD] [--no-mint] [--compound]
   cx promote <auto> <name>   copy a kept variants/auto_* to a named variant
 
@@ -194,11 +196,16 @@ def main(argv: list[str] | None = None) -> None:
 
     if cmd == "loop":
         if not rest:
-            sys.exit("usage: calvis loop <shift> [-n] [--max-iterations N] [--budget USD] [--no-mint]")
+            sys.exit(
+                "usage: calvis loop <shift> [-n] [--max-iterations N] [--budget USD] "
+                "[--no-mint]\n"
+                "       calvis loop --from-scenario <recipe|alias> [-n]\n"
+                "       calvis loop --from-run <run id or runs/<id>> [-n]"
+            )
         from cli import cmd_loop
         import argparse
 
-        shift = rest[0]
+        shift = rest[0] if not rest[0].startswith("-") else None
         dry = "-n" in rest or "--dry-run" in rest
 
         def _opt(flag: str, cast):
@@ -212,6 +219,8 @@ def main(argv: list[str] | None = None) -> None:
         cmd_loop(
             argparse.Namespace(
                 shift=shift,
+                from_scenario=_opt("--from-scenario", str),
+                from_run=_opt("--from-run", str),
                 dry_run=dry,
                 adapter="openai",
                 model="gpt-5.6-sol",

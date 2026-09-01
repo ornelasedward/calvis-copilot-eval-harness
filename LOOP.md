@@ -9,8 +9,16 @@ This file is the contract for delegated build sessions. Implement against
 
 ## Hard rules
 
-1. **Dataset is the shift JSON.** Cards come from `events` and `baseline` only.
-   Never invent guard personas, scripted replies, or synthetic images.
+1. **Cards come from recorded evidence, never from fiction.** Two sources and
+   no others:
+   * a shift JSON (`events` + `baseline`), or
+   * a **FAILED deterministic scripted scenario** — photo-gamer, partial,
+     pushback, hostile — whose guard side is a fixture state machine, so the
+     failing turn is a real copilot decision against a frozen script.
+
+   Never the LLM-simulated guard (`sim-*`, scorer `simulation_conduct`): that
+   stays a holdout-only eval layer. Never invent guard personas, scripted
+   replies, or synthetic images of your own.
 2. **Photos in this bundle are `[photo]` placeholders.** You can mine
    inspect-or-not and ask-again-or-not. You cannot claim two photos were
    visually the same location shot.
@@ -105,9 +113,51 @@ without calling unimplemented stages.
 | `pushback_failure` | Guard pushback text; copilot doubles down or vanishes | checklist later; code probe first |
 | `under_escalation` | Silent / coverage window; no flag/escalate in baseline when policy requires it | `escalation_focus` / `a3-shift-55252` |
 
-Every `ProblemCard` must set `source="json"` and fill `evidence` with
+Every JSON-mined `ProblemCard` sets `source="json"` and fills `evidence` with
 pointers into the file (`event_index`, `baseline_index`, turn numbers,
 quoted text). A card without evidence is invalid.
+
+## Scenario failures (`source="scenario"`)
+
+A scripted scenario that FAILS is a card. `harness/agent/mine.py` reads the
+sealed `recipe_score.json` plus the recorded turns and emits one card per
+failed gate, with `evidence.failed_gate`, `evidence.fixture`,
+`evidence.scenario_run_id`, and the failing turn's DMs and tools quoted. Each
+gate maps to one class in `catalog.py` (`SCENARIO_GATES`), e.g.
+
+| Scenario | Gate | Class | Policy files |
+|----------|------|-------|--------------|
+| photo-gamer | `ping_budget` | `third_ping` | `core/obligations.md`, `instructions/obligation_due.md` |
+| photo-gamer | `inspected_proof` | `uninspected_photo` | `core/tools.md`, `instructions/guard_response.md` |
+| pushback | `no_apology_spiral` | `caved_on_pushback` | `core/holding_the_post.md`, `core/comms_policy.md` |
+| hostile | `neither_cave_nor_retaliate` | `hostile_retaliation` | `core/holding_the_post.md`, `core/comms_policy.md` |
+
+Scenario cards are evaluated by `harness/agent/scenario_eval.py`, not by
+scoring frozen historical turns:
+
+* **targeted** — `execute_recipe(<scenario recipe>)` at the recipe's own
+  `repetitions` (pass^k), control arm = parent prompt, candidate arm = the
+  patched auto-variant. Pass requires the candidate to pass **and** the control
+  to have failed (or failed more gates). A scenario that was already green is
+  no lift.
+* **holdout** — `a3-shift-55252` **plus** the other three scripted scenarios as
+  conduct holdouts. Any holdout failure is `holdout_pass=False`, i.e. revert.
+* **preserve** — measured on the holdout shift, not the scenario arms: the
+  right fix often replaces a DM with an escalation, which is not a lost reply.
+
+### Running it
+
+```
+cx loop --from-run runs/var_photo_gamer_20260901T215149   # self-fix a recorded failure
+cx loop --from-scenario ag                                # run photo-gamer, self-fix if it fails
+cx go --fix                                               # cx go, then self-fix the first failed scenario
+```
+
+`-n` stays API-free end to end: the dry patch is the canned ordered rule and
+the scenario arms run against `harness.scenario.CannedAdapter`. `cx go` prints
+the exact `cx loop --from-run <run_id>` line after any scenario failure, and
+says "simulation-only evidence" instead for a `sim-*` failure. The loop still
+never calls `promote`.
 
 ## Artifacts
 
@@ -154,8 +204,9 @@ artifacts, stops on keep / revert-after-cap. `-n` stays API-free.
 
 - Guard simulators / forked replies — `harness/simulate.py` (recipe `sim-50737`,
   `cx sim`) exists as a separate eval layer, but rule 1 still holds: its runs are
-  never a card, control arm, or holdout here. The loop's dataset stays the shift
-  JSON. `harness/agent/catalog.py` must not reference `simulation_conduct`.
+  never a card, control arm, or holdout here. `harness/agent/catalog.py` must not
+  reference `simulation_conduct`; `LOOP_ELIGIBLE_SCORERS` there is an allowlist
+  of the four scripted-scenario scorers, so an LLM-driven layer cannot creep in.
 - Visual duplicate-photo fixtures
 - LLM-as-judge owning a gate
 - Composite 1–5 “quality” scores

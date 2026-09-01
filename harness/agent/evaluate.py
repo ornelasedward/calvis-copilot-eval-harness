@@ -423,6 +423,24 @@ def evaluate_diagnosis(
     ProcessSpec clause checks only. `dry_run=True` scores stored fixture runs
     and makes zero API calls.
     """
+    if (diagnosis.mode or "") == "scenario":
+        # Scripted-scenario cards are evaluated by replaying the scenario, not
+        # by scoring frozen historical turns. See harness/agent/scenario_eval.py.
+        from harness.agent.scenario_eval import evaluate_scenario_diagnosis
+
+        return evaluate_scenario_diagnosis(
+            diagnosis,
+            patch,
+            control_variant=control_variant,
+            adapter=adapter,
+            model=model,
+            dry_run=dry_run,
+            card=card,
+            root=root,
+            recipes_path=recipes_path,
+            run_jobs_fn=run_jobs_fn,
+        )
+
     if dry_run:
         return evaluate_from_fixture(
             diagnosis,

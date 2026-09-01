@@ -181,6 +181,14 @@ stop.
 .\cx promote variants/auto_2026… variant_d   # human-only, prints the diff and asks
 ```
 
+**Scenario self-fix.** A FAILED deterministic scripted scenario is also card
+evidence: `.\cx loop --from-run runs/var_photo_gamer_<stamp>` (or
+`--from-scenario ag` to run it first, or `.\cx go --fix` to chain it after a
+failing plan) mines the failed gates and runs the same diagnose → patch →
+evaluate → decide pipeline, re-running that scenario at its full `repetitions`
+plus the safety shift and the other three scenarios as holdouts. Simulated-guard
+(`sim-*`) failures are never mined (LOOP.md hard rule 1).
+
 **Artifacts** — one directory per run under `runs/loop_<stamp>/`, append-only
 (an iteration file is written once; only the root manifest is refreshed):
 
