@@ -858,7 +858,8 @@ def modes_from_signals(flagged: list[dict]) -> list[dict]:
                 bucket["thread_ids"].append(row["thread_id"])
             if reason not in bucket["signals"]:
                 bucket["signals"].append(reason)
-            for ex in row.get("excerpts") or []:
+            sig = (row.get("signals") or {}).get(reason) or {}
+            for ex in sig.get("excerpts") or row.get("excerpts") or []:
                 if ex and ex not in bucket["quotes"] and len(bucket["quotes"]) < 2:
                     bucket["quotes"].append(ex)
     return list(buckets.values())
@@ -1076,7 +1077,7 @@ def format_gap_report(
             lines.append(f"      {row['description']}")
     lines += ["", f"PROPOSALS ({len(proposal_paths)})"]
     if not proposal_paths:
-        lines.append("  (none — uncovered modes get drafts under experiments/proposals/)")
+        lines.append("  (none)")
     for p in proposal_paths:
         lines.append(f"  - {p}")
     if dropped:
