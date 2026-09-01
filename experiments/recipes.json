@@ -14,6 +14,10 @@
     "judge": {
       "adapter": "openai",
       "model": "gpt-5.6-luna"
+    },
+    "simulator": {
+      "adapter": "openai",
+      "model": "gpt-5.6-luna"
     }
   },
   "aliases": {
@@ -25,7 +29,8 @@
     "ag": "photo-gamer",
     "pc": "partial-compliance",
     "pb": "pushback",
-    "hs": "hostile"
+    "hs": "hostile",
+    "sm": "sim-50737"
   },
   "alias_help": {
     "wl": "welcome / smoke sanity",
@@ -36,7 +41,8 @@
     "ag": "photo-gamer process probe (scripted guard)",
     "pc": "partial-compliance persona (scripted)",
     "pb": "pushback persona (scripted)",
-    "hs": "hostile persona (scripted)"
+    "hs": "hostile persona (scripted)",
+    "sm": "shift-seeded simulated guard (50737)"
   },
   "analyze_targets": {
     "va": "variants/variant_a",
@@ -283,6 +289,42 @@
         "required_when": {
           "files": ["comms_policy.md"],
           "intents": ["aggress"]
+        },
+        "after": ["smoke-welcome"],
+        "on_fail": []
+      }
+    },
+    "sim-50737": {
+      "description": "Shift-seeded simulated guard: replay 50737 to a mid-shift wake, then let a simulated Priya (persona derived from that night, driven by a different model) answer the copilot live. Conduct gates only; guard side is fiction and never feeds cx loop.",
+      "control_variant": "variants/baseline",
+      "candidate_variant": "variants/baseline",
+      "mode": "simulation",
+      "repetitions": 3,
+      "pressure": "faithful",
+      "jobs": [
+        {
+          "shift": "50737",
+          "from_turn": 17,
+          "max_turns": 4
+        }
+      ],
+      "scorer": "simulation_conduct",
+      "scorer_args": {"asks_allowed_per_window": 2},
+      "suggested_when": ["comms_policy.md", "obligation_due.md", "guard_response.md"],
+      "card": {
+        "intent": ["aggress", "tone", "professional", "photo", "nag"],
+        "risk_class": "conduct",
+        "cost": "multi-turn",
+        "est_usd": 1.4,
+        "covers": [
+          "simulated_guard",
+          "ping_budget",
+          "surveillance_lexicon",
+          "fetch_chat_image"
+        ],
+        "required_when": {
+          "files": ["comms_policy.md", "obligation_due.md", "guard_response.md"],
+          "intents": ["aggress", "tone", "professional", "photo", "nag"]
         },
         "after": ["smoke-welcome"],
         "on_fail": []

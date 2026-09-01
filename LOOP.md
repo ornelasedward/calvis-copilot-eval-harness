@@ -152,7 +152,10 @@ artifacts, stops on keep / revert-after-cap. `-n` stays API-free.
 
 ## Out of scope until the loop runs
 
-- Guard simulators / forked replies
+- Guard simulators / forked replies — `harness/simulate.py` (recipe `sim-50737`,
+  `cx sim`) exists as a separate eval layer, but rule 1 still holds: its runs are
+  never a card, control arm, or holdout here. The loop's dataset stays the shift
+  JSON. `harness/agent/catalog.py` must not reference `simulation_conduct`.
 - Visual duplicate-photo fixtures
 - LLM-as-judge owning a gate
 - Composite 1–5 “quality” scores

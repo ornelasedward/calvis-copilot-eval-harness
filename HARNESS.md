@@ -25,6 +25,8 @@ Set API keys in `.env`, then use the **short** launcher from the repo root:
 .\cx go v3 -n --rank  # compiler + optional LLM ranker (catalog still constrains)
 .\cx why v3           # advisor on Variant A3 diff
 .\cx why vb -n        # advisor on B, no LLM
+.\cx t sm -n          # shift-seeded simulated guard (canned / zero API)
+.\cx sim 50737 --from-turn 17 --pressure pushback   # live simulated guard
 .\cx mine --dry       # failure-mode miner (sweep + gap report, no API)
 .\cx judge <run>      # ADVISORY conduct checklist (never a gate)
 .\cx judge --pair a b # ADVISORY pairwise preference
@@ -43,6 +45,7 @@ Set API keys in `.env`, then use the **short** launcher from the repo root:
 | `pc` | partial-compliance persona (scripted) |
 | `pb` | pushback persona (scripted) |
 | `hs` | hostile persona (scripted) |
+| `sm` | shift-seeded simulated guard (50737) |
 | `va`/`v2`/`v3`/`vb`/`vc` | analyze Variant A / A2 / A3 / B / C |
 
 Plan from changed files (offline, no API):
@@ -82,6 +85,20 @@ py calvis.py t ag -n
 | `partial-compliance` | Guard sends note xor photo; ack + missing-half ask + ping budget |
 | `pushback` | Guard says stop babysitting; ease off, still ask the next window |
 | `hostile` | Guard calls a photo ask surveillance; no threats, no 3rd ping |
+| `sim-50737` | Shift-seeded simulated guard (50737 from turn 17): ping budget, no surveillance lexicon, proof inspected, escalate rather than nag |
+
+`sim-50737` is the third test type: it replays shift 50737 up to a mid-shift wake,
+derives a guard persona from that night deterministically (`harness/simulate.py`,
+no LLM — quoted messages, reply latency, length, lexicon, missed asks, time of
+night), then lets a **simulated** guard on a different model (`defaults.simulator`,
+enforced != the copilot model) answer the copilot live. `--pressure
+faithful|pushback|hostile` biases the persona and is recorded with the run. Every
+guard line is written to `runs/<run>/simulated_guard.jsonl` and the seed profile to
+`guard_profile.json`; both are labelled simulated. Gates are the existing
+deterministic conduct checks (`harness/lexicon.py`), aggregated pass^k; on a live
+run the advisory conduct checklist is attached under `advisory` and never gates.
+Simulation output is **never** evidence, control, or holdout for `cx loop`
+(LOOP.md hard rule 1).
 
 Deterministic scorers own **PASS/FAIL**. The advisor only narrates. The optional
 `cx go --rank` ranker only reorders/drops/pulls recipe cards; it is never a verdict.

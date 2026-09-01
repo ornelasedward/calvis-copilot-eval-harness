@@ -38,6 +38,25 @@ def miner_defaults(path: Path | None = None) -> dict:
     return miner
 
 
+def simulator_defaults(
+    path: Path | None = None, *, copilot_model: str | None = None
+) -> dict:
+    """Return simulated-guard adapter/model. Model must differ from the copilot."""
+    data = load_recipes(path)
+    defaults = data.get("defaults") or {}
+    sim = dict(defaults.get("simulator") or {})
+    copilot = copilot_model or defaults.get("model") or "gpt-5.6-sol"
+    sim.setdefault("adapter", defaults.get("adapter") or "openai")
+    if not sim.get("model"):
+        raise KeyError("recipes.json defaults.simulator.model is required")
+    if sim["model"] == copilot:
+        raise ValueError(
+            f"simulator.model ({sim['model']}) must differ from copilot model ({copilot})"
+        )
+    sim["copilot_model"] = copilot
+    return sim
+
+
 def list_cards(path: Path | None = None) -> list[dict]:
     """Catalog cards used by the miner gap analysis (covers + intent)."""
     data = load_recipes(path)
@@ -430,6 +449,19 @@ def _score_photo_gamer(
     return score_photo_gamer_run(store, control_id, variant_id, recipe)
 
 
+def _score_simulation_conduct(
+    store: ExperimentStore, control_id: str, variant_id: str, recipe: dict
+) -> dict:
+    """Conduct gates over a shift-seeded simulated-guard trajectory. pass^k.
+
+    Simulation runs are eval-only: never evidence, control, or holdout for
+    `cx loop` (LOOP.md hard rule 1).
+    """
+    from harness.simulate import score_simulation_run
+
+    return score_simulation_run(store, control_id, variant_id, recipe)
+
+
 SCORERS: dict[str, Callable[..., dict]] = {
     "welcome": _score_welcome,
     "verify_b": _score_verify_b,
@@ -440,6 +472,7 @@ SCORERS: dict[str, Callable[..., dict]] = {
     "partial": _score_partial,
     "pushback": _score_pushback,
     "hostile": _score_hostile,
+    "simulation_conduct": _score_simulation_conduct,
 }
 
 
@@ -495,11 +528,32 @@ def execute_recipe(
         "repetitions": repeat,
         "dry_run": dry_run,
     }
-    # Historical recipes: --dry prints the plan and stops. Scenario recipes
-    # still run, against a canned copilot, so the scripted guard is exercised
-    # with zero API calls.
-    if dry_run and mode != "scenario":
+    if mode == "simulation":
+        plan["pressure"] = recipe.get("pressure") or "faithful"
+        plan["loop_eligible"] = False  # LOOP.md rule 1: never feeds cx loop
+
+    # Historical recipes: --dry prints the plan and stops. Scenario and
+    # simulation recipes still run, against a canned copilot (and a canned
+    # guard), so the whole path is exercised with zero API calls.
+    if dry_run and mode not in ("scenario", "simulation"):
         return {"plan": plan, "score": None, "pass": None}
+
+    if mode == "simulation":
+        from harness.simulate import execute_simulation_recipe
+
+        return execute_simulation_recipe(
+            name=name,
+            recipe=recipe,
+            plan=plan,
+            variant_id=variant_id,
+            control_id=control_id,
+            root=root,
+            adapter=adapter,
+            model=model,
+            candidate_variant=candidate_variant,
+            dry_run=dry_run,
+            repeat=repeat,
+        )
 
     if mode == "scenario":
         from harness.scenario import execute_scenario_recipe
