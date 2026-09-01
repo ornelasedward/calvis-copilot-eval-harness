@@ -31,16 +31,25 @@ Set API keys in `.env`, then use the **short** launcher from the repo root:
 | `cl` | claims verification (Variant B) |
 | `es` | escalation safety full-shift (A3) |
 | `qt` | quietness probe (A3) |
+| `vo` | voice compliance (Variant C) |
 | `ag` | photo-gamer process probe (scripted guard) |
-| `va`/`v2`/`v3`/`vb` | analyze Variant A / A2 / A3 / B |
+| `va`/`v2`/`v3`/`vb`/`vc` | analyze Variant A / A2 / A3 / B / C |
 
-Same via Python: `py calvis.py t cl` / `py calvis.py why v3`.
+Plan from changed files (offline, no API):
+
+```bash
+.\cx go -n --files scheduled_check_in.md
+.\cx go v3 -n
+.\cx go v3 --intent "escalation" --budget 2 --yes
+```
+
+`cx t <alias>` is unchanged. Same via Python: `py calvis.py t cl` / `py calvis.py go -n` / `py calvis.py why v3`.
 
 ## CI
 
 GitHub Actions (`.github/workflows/eval.yml`):
 
-- On push/PR to `main` or `staging`: pytest + `calvis.py ls` + dry-run `t cl` / `t ag` / `why vb`
+- On push/PR to `main` or `staging`: pytest + `calvis.py ls` + dry-run `t cl` / `t ag` / `go -n` / `why vb`
 - Manual **workflow_dispatch** with `live_recipes=true`: runs `t wl` if `OPENAI_API_KEY` repo secret is set
 
 ```bash

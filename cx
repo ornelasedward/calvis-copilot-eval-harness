@@ -1,0 +1,3 @@
+#!/usr/bin/env bash
+# Short launcher: cx t cl | cx go -n | cx why v3
+exec python3 "$(dirname "$0")/calvis.py" "$@"

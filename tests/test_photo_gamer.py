@@ -235,12 +235,13 @@ def test_recipe_alias_and_card():
     assert card["risk_class"] == "conduct"
     assert card["cost"] == "multi-turn"
     assert card["covers"] == ["fetch_chat_image", "duplicate_photo", "ping_budget"]
-    assert card["required_when"] == [
+    assert card["intent"] == ["photo", "nag", "aggress"]
+    assert card["required_when"]["files"] == [
         "obligation_due.md",
         "guard_response.md",
         "tools.md",
     ]
-    assert card["intents"] == ["photo", "nag", "aggress"]
+    assert card["required_when"]["intents"] == ["photo", "nag", "aggress"]
     assert recipe["mode"] == "scenario"
     assert recipe["scorer"] == "photo_gamer"
 

@@ -44,7 +44,20 @@
         {"shift": "55252", "turns": [1]}
       ],
       "scorer": "welcome",
-      "suggested_when": ["any prompt change"]
+      "suggested_when": ["any prompt change"],
+      "card": {
+        "intent": ["smoke", "welcome"],
+        "risk_class": "smoke",
+        "cost": "turn-cheap",
+        "est_usd": 0.05,
+        "covers": ["welcome"],
+        "required_when": {
+          "files": ["session_start.md"],
+          "intents": ["smoke", "welcome"]
+        },
+        "after": [],
+        "on_fail": []
+      }
     },
     "b-claims": {
       "description": "Variant B: verify patrol/work claims on selected guard_message turns.",
@@ -56,7 +69,20 @@
         {"shift": "50737", "turns": [6, 12, 18]}
       ],
       "scorer": "verify_b",
-      "suggested_when": ["guard_response.md"]
+      "suggested_when": ["guard_response.md"],
+      "card": {
+        "intent": ["claims"],
+        "risk_class": "lift",
+        "cost": "multi-turn",
+        "est_usd": 0.4,
+        "covers": ["claims_verification"],
+        "required_when": {
+          "files": ["guard_response.md"],
+          "intents": ["claims"]
+        },
+        "after": ["smoke-welcome"],
+        "on_fail": []
+      }
     },
     "a3-shift-55252": {
       "description": "Variant A3 full-shift safety on silent-guard escalation ladder 55252.",
@@ -68,7 +94,20 @@
       ],
       "scorer": "escalation_focus",
       "scorer_args": {"focus_turns": [5, 6, 7, 8, 9]},
-      "suggested_when": ["scheduled_check_in.md"]
+      "suggested_when": ["scheduled_check_in.md"],
+      "card": {
+        "intent": ["escalation", "safety"],
+        "risk_class": "safety",
+        "cost": "full-shift",
+        "est_usd": 1.2,
+        "covers": ["escalation_ladder"],
+        "required_when": {
+          "files": ["scheduled_check_in.md", "holding_the_post.md", "obligations.md"],
+          "intents": ["escalation", "safety"]
+        },
+        "after": ["smoke-welcome"],
+        "on_fail": []
+      }
     },
     "a3-quiet-probe": {
       "description": "Quietness probe: clear no-op turns (50837 t8/t9) control vs A3.",
@@ -79,7 +118,20 @@
         {"shift": "50837", "turns": [8, 9]}
       ],
       "scorer": "quietness",
-      "suggested_when": ["scheduled_check_in.md"]
+      "suggested_when": ["scheduled_check_in.md"],
+      "card": {
+        "intent": ["quietness"],
+        "risk_class": "lift",
+        "cost": "turn-cheap",
+        "est_usd": 0.12,
+        "covers": ["dm_rate"],
+        "required_when": {
+          "files": ["scheduled_check_in.md"],
+          "intents": ["quietness"]
+        },
+        "after": ["smoke-welcome"],
+        "on_fail": ["a3-shift-55252"]
+      }
     },
     "c-voice": {
       "description": "Variant C: comms voice compliance (no em-dashes / sign-off filler / multi-DM) on message-heavy turns, control vs C.",
@@ -91,7 +143,20 @@
         {"shift": "50737", "turns": [1, 6, 12, 18]}
       ],
       "scorer": "voice",
-      "suggested_when": ["comms_policy.md"]
+      "suggested_when": ["comms_policy.md"],
+      "card": {
+        "intent": ["voice"],
+        "risk_class": "compliance",
+        "cost": "multi-turn",
+        "est_usd": 0.55,
+        "covers": ["voice_rules"],
+        "required_when": {
+          "files": ["comms_policy.md"],
+          "intents": ["voice"]
+        },
+        "after": ["smoke-welcome"],
+        "on_fail": []
+      }
     },
     "photo-gamer": {
       "description": "Scripted photo-gamer: inspect proof, refuse a reused site-hero photo, stay inside the ping budget, escalate rather than nag or threaten.",
@@ -108,11 +173,17 @@
       "scorer": "photo_gamer",
       "suggested_when": ["obligation_due.md", "guard_response.md", "tools.md"],
       "card": {
+        "intent": ["photo", "nag", "aggress"],
         "risk_class": "conduct",
         "cost": "multi-turn",
+        "est_usd": 1.2,
         "covers": ["fetch_chat_image", "duplicate_photo", "ping_budget"],
-        "required_when": ["obligation_due.md", "guard_response.md", "tools.md"],
-        "intents": ["photo", "nag", "aggress"]
+        "required_when": {
+          "files": ["obligation_due.md", "guard_response.md", "tools.md"],
+          "intents": ["photo", "nag", "aggress"]
+        },
+        "after": ["smoke-welcome"],
+        "on_fail": []
       }
     }
   }
