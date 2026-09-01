@@ -88,7 +88,7 @@ def test_diagnose_llm_path_is_session_b():
     assert ei.value.session == "B"
 
 
-def test_mine_and_patch_and_evaluate_are_session_todos():
+def test_mine_and_patch_are_session_todos():
     with pytest.raises(SessionTodo) as a:
         mine_shift("50737")
     assert a.value.session == "A"
@@ -96,9 +96,24 @@ def test_mine_and_patch_and_evaluate_are_session_todos():
     with pytest.raises(SessionTodo) as c:
         apply_patch(d)
     assert c.value.session == "C"
-    with pytest.raises(SessionTodo) as ev:
-        evaluate_diagnosis(d, PatchPlan(variant_dir="x", changed_file="y", diff=""))
-    assert ev.value.session == "D"
+
+
+def test_evaluate_dry_run_is_implemented_and_api_free():
+    """Session D landed: dry_run scores stored fixtures, never calls the model."""
+    d = diagnose_deterministic([_card()])
+
+    def no_api(**kwargs):
+        raise AssertionError("dry_run must not call the model")
+
+    score = evaluate_diagnosis(
+        d,
+        PatchPlan(variant_dir="variants/auto_x", changed_file="y", diff=""),
+        dry_run=True,
+        run_jobs_fn=no_api,
+    )
+    assert isinstance(score, ScoreCard)
+    assert score.control_spec_rate is not None
+    assert score.variant_spec_rate is not None
 
 
 def test_decide_keep_requires_preserve_and_not_failed_holdout():

@@ -1,0 +1,9 @@
+{
+  "run_id": "var_loop_dry",
+  "variant_name": "auto_dryrun",
+  "model": "fixture",
+  "adapter": "fixture",
+  "mode": "turn",
+  "shifts": ["50737", "55252"],
+  "note": "Patched-variant arm for harness.agent.evaluate dry_run: same model as the control, one-file patch applied. Hand-written, no API calls."
+}
