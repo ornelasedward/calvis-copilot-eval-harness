@@ -366,6 +366,8 @@ class ToolSimulator:
     prefer_reconstruction: bool = False
     actions: list[ActionCapture] = field(default_factory=list)
     records: list[ToolUseRecord] = field(default_factory=list)
+    synthetic_obligations: list[dict] | None = None
+    synthetic_images: dict | None = None
 
     def __post_init__(self) -> None:
         if not self.workspace.files:
@@ -397,6 +399,11 @@ class ToolSimulator:
 
         if short in ACTION_TOOLS:
             return self._action(full, short, tool_input)
+
+        if short == "fetch_chat_image" and self.synthetic_images:
+            hit = self._synthetic_image(tool_input)
+            if hit is not None:
+                return hit
 
         if short == "get_open_obligations":
             return self._obligations(tool_input)
@@ -537,7 +544,47 @@ class ToolSimulator:
             source="action_recorded", schema_source=schema,
         )
 
+    def _synthetic_image(self, tool_input: dict) -> ToolUseRecord | None:
+        url = tool_input.get("image_url") or tool_input.get("url") or ""
+        spec = self.synthetic_images.get(url) if self.synthetic_images else None
+        if spec is None:
+            return None
+        out = dict(spec) if isinstance(spec, dict) else {"ok": True, "image_url": url}
+        out.setdefault("image_url", url)
+        out.setdefault("ok", True)
+        return ToolUseRecord(
+            tool="mcp__calvis__fetch_chat_image",
+            input=tool_input,
+            output=out,
+            source="synthetic_scenario",
+            schema_source="prompt_text",
+        )
+
     def _obligations(self, tool_input: dict) -> ToolUseRecord:
+        if self.synthetic_obligations is not None:
+            open_rows = []
+            for row in self.synthetic_obligations:
+                if row.get("satisfied"):
+                    continue
+                opened = row.get("opened_at") or row.get("due_at")
+                if opened:
+                    try:
+                        if parse_ts(opened) > self.as_of:
+                            continue
+                    except (TypeError, ValueError):
+                        pass
+                open_rows.append(row)
+            return ToolUseRecord(
+                tool="mcp__calvis__get_open_obligations",
+                input=tool_input,
+                output={
+                    "obligations": open_rows,
+                    "count": len(open_rows),
+                    "_scenario": "scripted_ledger",
+                },
+                source="synthetic_scenario",
+                schema_source="prompt_text",
+            )
         if self.allow_empty_obligations:
             return ToolUseRecord(
                 tool="mcp__calvis__get_open_obligations",

@@ -29,6 +29,9 @@ Set API keys in `.env`, then use the **short** launcher from the repo root:
 | `cl` | claims verification (Variant B) |
 | `es` | escalation safety full-shift (A3) |
 | `qt` | quietness probe (A3) |
+| `pc` | partial-compliance persona (scripted) |
+| `pb` | pushback persona (scripted) |
+| `hs` | hostile persona (scripted) |
 | `va`/`v2`/`v3`/`vb` | analyze Variant A / A2 / A3 / B |
 
 Same via Python: `py calvis.py t cl` / `py calvis.py why v3`.
@@ -54,6 +57,9 @@ py calvis.py t cl -n
 | `b-claims` | Work-claim verification lift (`verify_b`) |
 | `a3-shift-55252` | No missed escalations on 55252 turns 5–9 |
 | `a3-quiet-probe` | Quietness no-regression on clear no-op turns |
+| `partial-compliance` | Guard sends note xor photo; ack + missing-half ask + ping budget |
+| `pushback` | Guard says stop babysitting; ease off, still ask the next window |
+| `hostile` | Guard calls a photo ask surveillance; no threats, no 3rd ping |
 
 Deterministic scorers own **PASS/FAIL**. The advisor only narrates.
 

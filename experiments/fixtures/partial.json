@@ -1,0 +1,130 @@
+{
+  "shift": {
+    "id": "partial",
+    "start": "2026-09-01T17:00:00+00:00",
+    "end": "2026-09-02T01:00:00+00:00",
+    "timezone": "America/Chicago",
+    "duration_hours": 8.0,
+    "site": {
+      "account": "Halcyon Yards (synthetic)",
+      "address": "1200 Harbor Rd, Springfield, IL 62701",
+      "lat": 39.7817,
+      "lng": -89.6501,
+      "geofence_radius_m": 80
+    },
+    "instructions": {
+      "content": "**Hourly check-in (required)**\nEvery hour, send a CURRENT photo of the post AND a short status note in this chat. Both halves are required; a note without a photo is incomplete, and a photo without a note is incomplete.\n\n**Duties**\nVisible presence at the main gate. Report anything unusual here.",
+      "summary": "Hourly check-in requires a current photo and a status note.",
+      "patrol_frequency_minutes": 60,
+      "report_frequency_minutes": 60
+    },
+    "guard": {
+      "name": "Ravi Chen",
+      "prior_shifts_for_account": 4,
+      "prior_shifts_total": 18
+    }
+  },
+  "events": [],
+  "baseline": [],
+  "script": {
+    "persona": "partial",
+    "gold": {
+      "persona": "partial",
+      "branch": "text_no_photo",
+      "session_id": "scenario-partial-001",
+      "obligation_id": "hourly_checkin_w1",
+      "obligation_time": "2:00 PM",
+      "obligation_time_tokens": ["2:00", "14:00", "2 pm"],
+      "requires": ["photo", "note"],
+      "provided_half": "note",
+      "missing_half": "photo",
+      "partial_text": "east lot's quiet, nothing moving",
+      "photo_url": "https://example.invalid/guards/ravi/checkin_current.jpg",
+      "photo_caption": "",
+      "completing_note": "all quiet on the east lot",
+      "ack_tokens": ["got it", "logged", "quiet", "east", "copy"],
+      "provided_tokens": ["status", "note", "what's happening", "how's it"],
+      "missing_tokens": ["photo", "pic", "picture", "shot"],
+      "asks_allowed_per_window": 2
+    },
+    "obligations": [
+      {
+        "id": "hourly_checkin_w1",
+        "kind": "check_in",
+        "photo_required": true,
+        "note_required": true,
+        "asks_sent": 0,
+        "escalated": false,
+        "satisfied": false,
+        "opened_at": "2026-09-01T19:00:00+00:00",
+        "due_at": "2026-09-01T19:00:00+00:00",
+        "label": "Hourly check-in (photo + note) due 2:00 PM"
+      }
+    ],
+    "images": {
+      "https://example.invalid/guards/ravi/checkin_current.jpg": {
+        "ok": true,
+        "image_url": "https://example.invalid/guards/ravi/checkin_current.jpg",
+        "duplicate_of": null,
+        "caption": "current post photo"
+      }
+    },
+    "wakes": [
+      {
+        "turn": 1,
+        "trigger": "obligation_due",
+        "ts": "2026-09-01T19:00:00+00:00",
+        "obligation_ids": ["hourly_checkin_w1"]
+      },
+      {
+        "turn": 2,
+        "trigger": "guard_message",
+        "ts": "2026-09-01T19:02:00+00:00",
+        "obligation_ids": ["hourly_checkin_w1"]
+      },
+      {
+        "turn": 3,
+        "trigger": "guard_message",
+        "ts": "2026-09-01T19:04:00+00:00",
+        "obligation_ids": ["hourly_checkin_w1"]
+      }
+    ],
+    "canned": {
+      "passing": [
+        [
+          {"tool": "get_open_obligations", "input": {}},
+          {
+            "tool": "request_copilot_dm",
+            "input": {
+              "body": "Hourly check-in is up. Shoot me a quick note and a photo of the post when you can.",
+              "meta": {"copilot_action": "ask"}
+            }
+          }
+        ],
+        [
+          {"tool": "get_open_obligations", "input": {}},
+          {
+            "tool": "request_copilot_dm",
+            "input": {
+              "body": "Got it, east lot's quiet. Still need a current photo of the post when you get a second.",
+              "meta": {"copilot_action": "firm_up"}
+            }
+          }
+        ],
+        [
+          {
+            "tool": "fetch_chat_image",
+            "input": {"image_url": "https://example.invalid/guards/ravi/checkin_current.jpg"}
+          },
+          {"tool": "get_open_obligations", "input": {}},
+          {
+            "tool": "request_copilot_dm",
+            "input": {
+              "body": "Photo logged. You're set for this window."
+            }
+          }
+        ]
+      ]
+    }
+  }
+}

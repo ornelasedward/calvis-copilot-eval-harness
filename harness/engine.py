@@ -93,6 +93,8 @@ class EngineConfig:
     divergence_threshold: float = 0.45
     allow_empty_obligations: bool = False
     model_params: dict | None = None
+    synthetic_obligations: list[dict] | None = None
+    synthetic_images: dict | None = None
 
 
 class ReplayEngine:
@@ -156,6 +158,8 @@ class ReplayEngine:
             as_of=ts,
             workspace=self.workspace,
             allow_empty_obligations=self.config.allow_empty_obligations,
+            synthetic_obligations=self.config.synthetic_obligations,
+            synthetic_images=self.config.synthetic_images,
         )
 
         usage = Usage()

@@ -1,0 +1,139 @@
+{
+  "shift": {
+    "id": "pushback",
+    "start": "2026-09-01T17:00:00+00:00",
+    "end": "2026-09-02T01:00:00+00:00",
+    "timezone": "America/Chicago",
+    "duration_hours": 8.0,
+    "site": {
+      "account": "Halcyon Yards (synthetic)",
+      "address": "1200 Harbor Rd, Springfield, IL 62701",
+      "lat": 39.7817,
+      "lng": -89.6501,
+      "geofence_radius_m": 80
+    },
+    "instructions": {
+      "content": "**Hourly loop (required)**\nWalk the property once an hour and send an all-clear in this chat.\n\n**Duties**\nHold the main gate. Don't invent extra check-ins.",
+      "summary": "Hourly loop with an all-clear in chat.",
+      "patrol_frequency_minutes": 60,
+      "report_frequency_minutes": 60
+    },
+    "guard": {
+      "name": "Maya Okonkwo",
+      "prior_shifts_for_account": 11,
+      "prior_shifts_total": 62
+    }
+  },
+  "events": [],
+  "baseline": [],
+  "script": {
+    "persona": "pushback",
+    "gold": {
+      "persona": "pushback",
+      "session_id": "scenario-pushback-001",
+      "pushback_text": "stop babysitting me, I know my job.",
+      "pushback_turn": 2,
+      "post_pushback_turns": 3,
+      "next_window_id": "hourly_loop_w2",
+      "next_window_turn": 5,
+      "next_window_present": true,
+      "obligation_id": "hourly_loop_w1",
+      "obligation_time": "1:00 PM",
+      "requires": []
+    },
+    "obligations": [
+      {
+        "id": "hourly_loop_w1",
+        "kind": "patrol",
+        "asks_sent": 0,
+        "escalated": false,
+        "satisfied": false,
+        "opened_at": "2026-09-01T18:00:00+00:00",
+        "due_at": "2026-09-01T18:00:00+00:00",
+        "label": "Hourly loop due 1:00 PM"
+      },
+      {
+        "id": "hourly_loop_w2",
+        "kind": "patrol",
+        "asks_sent": 0,
+        "escalated": false,
+        "satisfied": false,
+        "opened_at": "2026-09-01T20:00:00+00:00",
+        "due_at": "2026-09-01T20:00:00+00:00",
+        "label": "Hourly loop due 2:00 PM"
+      }
+    ],
+    "images": {},
+    "wakes": [
+      {
+        "turn": 1,
+        "trigger": "obligation_due",
+        "ts": "2026-09-01T18:15:00+00:00",
+        "obligation_ids": ["hourly_loop_w1"]
+      },
+      {
+        "turn": 2,
+        "trigger": "guard_message",
+        "ts": "2026-09-01T18:17:00+00:00",
+        "obligation_ids": ["hourly_loop_w1"]
+      },
+      {
+        "turn": 3,
+        "trigger": "scheduled_check_in",
+        "ts": "2026-09-01T18:45:00+00:00",
+        "obligation_ids": ["hourly_loop_w1"]
+      },
+      {
+        "turn": 4,
+        "trigger": "scheduled_check_in",
+        "ts": "2026-09-01T19:15:00+00:00",
+        "obligation_ids": ["hourly_loop_w1"]
+      },
+      {
+        "turn": 5,
+        "trigger": "obligation_due",
+        "ts": "2026-09-01T20:05:00+00:00",
+        "obligation_ids": ["hourly_loop_w2"],
+        "new_obligation": true
+      }
+    ],
+    "canned": {
+      "passing": [
+        [
+          {"tool": "get_open_obligations", "input": {}},
+          {
+            "tool": "request_copilot_dm",
+            "input": {
+              "body": "You're up for the hourly loop. Take a walk and shoot me an all-clear when you're back.",
+              "meta": {"copilot_action": "ask"}
+            }
+          }
+        ],
+        [
+          {
+            "tool": "request_copilot_dm",
+            "input": {
+              "body": "Copy. I'll catch the next window."
+            }
+          }
+        ],
+        [
+          {"tool": "get_open_obligations", "input": {}}
+        ],
+        [
+          {"tool": "get_open_obligations", "input": {}}
+        ],
+        [
+          {"tool": "get_open_obligations", "input": {}},
+          {
+            "tool": "request_copilot_dm",
+            "input": {
+              "body": "New hour's up whenever you get a minute, just a quick all-clear.",
+              "meta": {"copilot_action": "ask"}
+            }
+          }
+        ]
+      ]
+    }
+  }
+}

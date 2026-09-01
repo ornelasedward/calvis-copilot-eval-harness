@@ -35,7 +35,8 @@ def _help() -> None:
   cx t <code> [-n]           run test recipe
   cx why <code> [-n]         analyze prompt vs baseline
 
-  Test codes:   wl=welcome  cl=claims  es=escalation  qt=quietness
+  Test codes:   wl=welcome  cl=claims  es=escalation  qt=quietness  vo=voice
+                pc=partial  pb=pushback  hs=hostile
   Why codes:    va=A  v2=A2  v3=A3  vb=B
 
 Examples:
@@ -69,7 +70,7 @@ def main(argv: list[str] | None = None) -> None:
 
     if cmd in ("t", "test"):
         if not rest:
-            sys.exit("usage: calvis t <wl|cl|es|qt> [-n]")
+            sys.exit("usage: calvis t <wl|cl|es|qt|vo|pc|pb|hs> [-n]")
         recipe = rest[0]
         dry = "-n" in rest or "--dry-run" in rest
         from cli import cmd_test

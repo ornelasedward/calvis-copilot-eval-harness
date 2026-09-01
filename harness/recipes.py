@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 from harness.diagnose_escalation import compare_pair
+from harness.score_conduct import _score_hostile, _score_partial, _score_pushback
 from harness.store import ExperimentStore
 from harness.verify_b import verification_stats
 
@@ -359,6 +360,9 @@ SCORERS: dict[str, Callable[..., dict]] = {
     "escalation_focus": _score_escalation_focus,
     "quietness": _score_quietness,
     "voice": _score_voice,
+    "partial": _score_partial,
+    "pushback": _score_pushback,
+    "hostile": _score_hostile,
 }
 
 
@@ -410,7 +414,23 @@ def execute_recipe(
         "jobs": jobs,
         "scorer": recipe.get("scorer"),
         "dry_run": dry_run,
+        "repetitions": recipe.get("repetitions") or repeat,
     }
+    if mode == "scenario":
+        from harness.scenario import execute_scenario_recipe
+
+        k = max(int(recipe.get("repetitions") or repeat or 1), 1)
+        return execute_scenario_recipe(
+            name=name,
+            recipe=recipe,
+            plan=plan,
+            dry_run=dry_run,
+            adapter=adapter,
+            model=model,
+            candidate_variant=candidate_variant,
+            repeat=k,
+            root=root,
+        )
     if dry_run:
         return {"plan": plan, "score": None, "pass": None}
 

@@ -160,6 +160,7 @@ class Shift:
     events: EventStore
     baseline: list[dict]   # raw baseline entries, in recorded order
     fixtures: FixtureStore
+    script: dict | None = None  # scripted-guard scenario (experiments/fixtures)
     start: datetime = field(init=False)
     end: datetime = field(init=False)
     timezone: str = field(init=False)
@@ -176,13 +177,15 @@ class Shift:
 def load_shift(path: str | Path) -> Shift:
     path = Path(path)
     raw = json.loads(path.read_text(encoding="utf-8"))
+    baseline = raw.get("baseline") or []
     return Shift(
         id=str(raw["shift"]["id"]),
         path=path,
         context=raw["shift"],
-        events=EventStore(raw["events"]),
-        baseline=raw["baseline"],
-        fixtures=FixtureStore(raw["baseline"]),
+        events=EventStore(raw.get("events") or []),
+        baseline=baseline,
+        fixtures=FixtureStore(baseline),
+        script=raw.get("script"),
     )
 
 

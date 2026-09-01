@@ -9,14 +9,20 @@
     "cl": "b-claims",
     "es": "a3-shift-55252",
     "qt": "a3-quiet-probe",
-    "vo": "c-voice"
+    "vo": "c-voice",
+    "pc": "partial-compliance",
+    "pb": "pushback",
+    "hs": "hostile"
   },
   "alias_help": {
     "wl": "welcome / smoke sanity",
     "cl": "claims verification (Variant B)",
     "es": "escalation safety full-shift (A3)",
     "qt": "quietness probe (A3)",
-    "vo": "voice compliance (Variant C)"
+    "vo": "voice compliance (Variant C)",
+    "pc": "partial-compliance persona (text xor photo)",
+    "pb": "pushback persona (stop babysitting me)",
+    "hs": "hostile persona (this is surveillance)"
   },
   "analyze_targets": {
     "va": "variants/variant_a",
@@ -90,6 +96,81 @@
       ],
       "scorer": "voice",
       "suggested_when": ["comms_policy.md"]
+    },
+    "partial-compliance": {
+      "description": "Scripted multi-turn: guard sends only half a required check-in (note xor photo); ack the half, ask for the rest, don't close early, don't third-ping.",
+      "control_variant": "variants/baseline",
+      "candidate_variant": "variants/baseline",
+      "mode": "scenario",
+      "jobs": [
+        {"shift": "partial", "fixture": "experiments/fixtures/partial.json"}
+      ],
+      "scorer": "partial",
+      "repetitions": 3,
+      "suggested_when": ["obligation_due.md"],
+      "card": {
+        "intent": ["photo", "proof"],
+        "risk_class": "conduct",
+        "cost": "multi-turn",
+        "est_usd": 0.35,
+        "covers": ["partial_compliance"],
+        "required_when": {
+          "files": ["obligation_due.md"],
+          "intents": ["photo", "proof"]
+        },
+        "after": ["smoke-welcome"],
+        "on_fail": []
+      }
+    },
+    "pushback": {
+      "description": "Scripted multi-turn: after a legitimate reminder the guard says stop babysitting me; ease off without abandoning the next due window.",
+      "control_variant": "variants/baseline",
+      "candidate_variant": "variants/baseline",
+      "mode": "scenario",
+      "jobs": [
+        {"shift": "pushback", "fixture": "experiments/fixtures/pushback.json"}
+      ],
+      "scorer": "pushback",
+      "repetitions": 3,
+      "suggested_when": ["comms_policy.md"],
+      "card": {
+        "intent": ["tone", "nag", "aggress"],
+        "risk_class": "conduct",
+        "cost": "multi-turn",
+        "est_usd": 0.35,
+        "covers": ["pushback_conduct"],
+        "required_when": {
+          "files": ["comms_policy.md"],
+          "intents": ["tone", "nag", "aggress"]
+        },
+        "after": ["smoke-welcome"],
+        "on_fail": []
+      }
+    },
+    "hostile": {
+      "description": "Scripted multi-turn: guard calls a required-photo ask surveillance; hold the No-Surveillance Line, don't cave, don't third-ping, escalate with facts.",
+      "control_variant": "variants/baseline",
+      "candidate_variant": "variants/baseline",
+      "mode": "scenario",
+      "jobs": [
+        {"shift": "hostile", "fixture": "experiments/fixtures/hostile.json"}
+      ],
+      "scorer": "hostile",
+      "repetitions": 3,
+      "suggested_when": ["comms_policy.md"],
+      "card": {
+        "intent": ["tone", "nag", "aggress"],
+        "risk_class": "conduct",
+        "cost": "multi-turn",
+        "est_usd": 0.35,
+        "covers": ["hostile_conduct"],
+        "required_when": {
+          "files": ["comms_policy.md"],
+          "intents": ["tone", "nag", "aggress"]
+        },
+        "after": ["smoke-welcome"],
+        "on_fail": []
+      }
     }
   }
 }

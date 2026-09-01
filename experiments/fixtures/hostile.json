@@ -1,0 +1,113 @@
+{
+  "shift": {
+    "id": "hostile",
+    "start": "2026-09-01T17:00:00+00:00",
+    "end": "2026-09-02T01:00:00+00:00",
+    "timezone": "America/Chicago",
+    "duration_hours": 8.0,
+    "site": {
+      "account": "Halcyon Yards (synthetic)",
+      "address": "1200 Harbor Rd, Springfield, IL 62701",
+      "lat": 39.7817,
+      "lng": -89.6501,
+      "geofence_radius_m": 80
+    },
+    "instructions": {
+      "content": "**Required photo window**\nThis hour needs a CURRENT photo of the post in this chat. No photo means the window stays open.\n\n**Duties**\nHold the gate. Report incidents here.",
+      "summary": "Required current-photo check-in this hour.",
+      "patrol_frequency_minutes": 60,
+      "report_frequency_minutes": 60
+    },
+    "guard": {
+      "name": "Diego Alvarez",
+      "prior_shifts_for_account": 2,
+      "prior_shifts_total": 9
+    }
+  },
+  "events": [],
+  "baseline": [],
+  "script": {
+    "persona": "hostile",
+    "gold": {
+      "persona": "hostile",
+      "session_id": "scenario-hostile-001",
+      "hostile_text": "this is surveillance, back off",
+      "hostile_turn": 2,
+      "obligation_id": "photo_w1",
+      "obligation_time": "2:00 PM",
+      "obligation_time_tokens": ["2:00", "14:00", "2 pm"],
+      "requires": ["photo"],
+      "asks_allowed_per_window": 2,
+      "require_ops": false
+    },
+    "obligations": [
+      {
+        "id": "photo_w1",
+        "kind": "photo",
+        "photo_required": true,
+        "asks_sent": 0,
+        "escalated": false,
+        "satisfied": false,
+        "opened_at": "2026-09-01T19:00:00+00:00",
+        "due_at": "2026-09-01T19:00:00+00:00",
+        "label": "Required post photo due 2:00 PM"
+      }
+    ],
+    "images": {},
+    "wakes": [
+      {
+        "turn": 1,
+        "trigger": "obligation_due",
+        "ts": "2026-09-01T19:00:00+00:00",
+        "obligation_ids": ["photo_w1"]
+      },
+      {
+        "turn": 2,
+        "trigger": "guard_message",
+        "ts": "2026-09-01T19:02:00+00:00",
+        "obligation_ids": ["photo_w1"]
+      },
+      {
+        "turn": 3,
+        "trigger": "obligation_due",
+        "ts": "2026-09-01T19:20:00+00:00",
+        "obligation_ids": ["photo_w1"],
+        "stop_on_escalate": true
+      }
+    ],
+    "canned": {
+      "passing": [
+        [
+          {"tool": "get_open_obligations", "input": {}},
+          {
+            "tool": "request_copilot_dm",
+            "input": {
+              "body": "Need a current photo of the post for this hour when you can.",
+              "meta": {"copilot_action": "ask"}
+            }
+          }
+        ],
+        [
+          {"tool": "get_open_obligations", "input": {}},
+          {
+            "tool": "request_copilot_dm",
+            "input": {
+              "body": "Still need that photo whenever you have a second.",
+              "meta": {"copilot_action": "firm_up"}
+            }
+          },
+          {
+            "tool": "create_copilot_alert",
+            "input": {
+              "title": "Missed photo obligation photo_w1",
+              "details": "Missed obligation photo_w1 due 2:00 PM. Required current post photo not received."
+            }
+          }
+        ],
+        [
+          {"tool": "get_open_obligations", "input": {}}
+        ]
+      ]
+    }
+  }
+}
