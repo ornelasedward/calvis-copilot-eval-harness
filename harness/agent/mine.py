@@ -1,6 +1,15 @@
-"""Session A: mine ProblemCards from shift JSON (events + baseline).
+"""Session A: mine ProblemCards from shift JSON, or from a failed scenario run.
 
-No LLM. No personas. Every card must cite evidence in the file.
+No LLM. No personas. Every card must cite evidence in the file (or, for a
+scripted-scenario card, in the recorded run).
+
+Two sources, both deterministic (LOOP.md hard rule 1):
+
+* ``mine_shift(id)`` — ``shifts/<id>.json`` events + baseline.
+* ``mine_scenario_failure(run)`` / ``mine_scenario(recipe)`` — a FAILED
+  deterministic scripted scenario (photo-gamer, partial, pushback, hostile),
+  whose guard side is a fixture state machine, never an LLM. Simulation runs
+  (``sim-*`` / ``simulation_conduct``) are refused.
 
 The miner reads one `shifts/<id>.json` through `harness.loader.load_shift` and
 slices the recorded baseline into turns with
@@ -286,6 +295,7 @@ def _make_card(
     problem_class: ProblemClass,
     turns: list[int],
     evidence: Evidence,
+    source: str = "json",
 ) -> ProblemCard:
     entry = CLASS_CATALOG[problem_class]
     card = ProblemCard(
@@ -297,7 +307,7 @@ def _make_card(
         evidence=evidence,
         policy_files=list(entry["policy_files"]),
         spec=process_spec_for(problem_class),
-        source="json",
+        source=source,  # type: ignore[arg-type]
     )
     card.validate()
     return card
@@ -715,3 +725,320 @@ def summarize(cards: Iterable[ProblemCard]) -> dict[str, int]:
     for card in cards:
         counts[card.problem_class] = counts.get(card.problem_class, 0) + 1
     return counts
+
+
+# ---------------------------------------------------------------------------
+# Scenario failures (LOOP.md hard rule 1, second half)
+# ---------------------------------------------------------------------------
+# A deterministic scripted scenario that FAILED is a legitimate card source: the
+# guard side is a fixture-driven state machine, not an LLM persona, so the
+# failing turn is a real recorded copilot decision against a frozen script. The
+# LLM-simulated guard (`sim-*` / `simulation_conduct`) is refused here.
+
+RUNS_DIR = ROOT / "runs"
+
+#: Which recorded scenario_state observation marks the turn a gate broke on.
+#: Falls back to the last DM turn when the gate has no direct observation.
+_GATE_OBSERVATION: dict[str, str] = {
+    "ping_budget": "third_plus_ping",
+    "no_surveillance_lexicon": "threatened",
+    "no_surveillance_line": "threatened",
+    "no_threat_in_pushback_response": "threatened",
+    "duplicate_not_closed": "closed_window",
+    "not_satisfied_until_both": "closed_window",
+}
+
+#: The tool the copilot should have reached for when this gate failed.
+_GATE_MISSING_TOOLS: dict[str, list[str]] = {
+    "ping_budget": ["escalate_to_ops"],
+    "dm_budget_after_pushback": ["add_copilot_note"],
+    "inspected_proof": [IMAGE_TOOL],
+    "duplicate_not_closed": [IMAGE_TOOL],
+    "ops_facts_not_character": ["escalate_to_ops"],
+}
+
+
+class ScenarioNotEligible(ValueError):
+    """This run is not a deterministic scripted scenario failure."""
+
+
+def _run_dir(source: str | Path, runs_dir: str | Path | None = None) -> Path:
+    """Accept a run id, a run directory, or a path to its recipe_score.json."""
+    candidate = Path(str(source))
+    if candidate.is_file():
+        return candidate.parent
+    if candidate.is_dir():
+        return candidate
+    base = Path(runs_dir) if runs_dir else RUNS_DIR
+    return base / str(source)
+
+
+def _gates_of(row: dict) -> tuple[dict[str, bool], list[str]]:
+    """Gate booleans + failed gate names from either scorer shape."""
+    gates = dict(row.get("gates") or {})
+    failed = list(row.get("failed_gates") or row.get("failed") or [])
+    if not failed:
+        failed = [name for name, ok in gates.items() if not ok]
+    return gates, failed
+
+
+def _repetitions(score: dict) -> list[dict]:
+    return list(score.get("per_repetition") or [])
+
+
+def _turn_no(turn: dict) -> int:
+    return int(turn.get("turn") or 0)
+
+
+def _turn_observations(turn: dict) -> dict:
+    for ev in turn.get("raw_events") or []:
+        if isinstance(ev, dict) and ev.get("type") == "scenario_state":
+            return dict(ev.get("observations") or {})
+    return {}
+
+
+def _turn_guard_text(turn: dict) -> str | None:
+    bits: list[str] = []
+    for ev in turn.get("raw_events") or []:
+        if not isinstance(ev, dict) or ev.get("type") != "guard_message":
+            continue
+        text = (ev.get("text") or "").strip()
+        url = ev.get("image_url") or ev.get("image")
+        if text:
+            bits.append(text)
+        if url:
+            bits.append(f"[image {url}]")
+    return _quote(" ".join(bits)) if bits else None
+
+
+def _turn_dms(turn: dict) -> list[str]:
+    out: list[str] = []
+    for m in turn.get("messages") or []:
+        if isinstance(m, dict):
+            body = m.get("body") or m.get("message") or m.get("text") or ""
+        else:
+            body = str(m)
+        if body.strip():
+            out.append(_quote(body))
+    return out
+
+
+def _turn_tools(turn: dict) -> list[str]:
+    return [tool_short(t.get("tool") or "") for t in (turn.get("tools_used") or [])]
+
+
+def _failing_turn(gate: str, turns: list[dict]) -> dict | None:
+    """The turn the gate broke on: the flagged wake, else the last DM wake."""
+    if not turns:
+        return None
+    ordered = sorted(turns, key=_turn_no)
+    flag = _GATE_OBSERVATION.get(gate)
+    if flag:
+        flagged = [t for t in ordered if _turn_observations(t).get(flag)]
+        if flagged:
+            return flagged[-1]
+    with_dms = [t for t in ordered if _turn_dms(t)]
+    return with_dms[-1] if with_dms else ordered[-1]
+
+
+def _gate_notes(gate: str, row: dict, rep: int, plan: dict) -> list[str]:
+    """Quote the gate result itself, straight out of the recorded score."""
+    notes = [
+        f"scenario `{plan.get('recipe')}` gate `{gate}` FAILED on repetition {rep} "
+        f"(scorer {plan.get('scorer')}, {row.get('detail') or 'no detail'})",
+    ]
+    numbers = {
+        k: row[k]
+        for k in (
+            "photo_ask_count",
+            "asks_allowed_per_window",
+            "escalated",
+            "duplicates_in_thread",
+            "ask_dms",
+            "dm_count_post_pushback",
+            "caved",
+            "apology_tokens",
+            "surveillance_hits",
+        )
+        if k in row
+    }
+    if numbers:
+        notes.append(
+            "recorded gate numbers: "
+            + ", ".join(f"{k}={json.dumps(v, default=str)}" for k, v in numbers.items())
+        )
+    return notes
+
+
+def _scenario_cards(
+    plan: dict,
+    score: dict,
+    turns_by_rep: dict[int, list[dict]],
+    *,
+    run_id: str,
+    fixture: str,
+    shift_id: str,
+) -> list[ProblemCard]:
+    """One card per distinct failed gate, citing the run it failed in."""
+    from harness.agent.catalog import scenario_class_for_gate
+
+    cards: list[ProblemCard] = []
+    seen: set[str] = set()
+    for rep, row in enumerate(_repetitions(score)):
+        _, failed = _gates_of(row)
+        for gate in failed:
+            if gate in seen:
+                continue
+            problem_class = scenario_class_for_gate(shift_id, gate)
+            if problem_class is None:
+                continue
+            seen.add(gate)
+            turn = _failing_turn(gate, turns_by_rep.get(rep) or [])
+            if turn is None:
+                continue
+            dms = _turn_dms(turn)
+            tools = _turn_tools(turn)
+            missing = [
+                t for t in _GATE_MISSING_TOOLS.get(gate, []) if t not in tools
+            ]
+            notes = _gate_notes(gate, row, rep, plan)
+            notes.append(
+                f"failing wake: turn {_turn_no(turn)} ({turn.get('trigger')}) "
+                f"decision={turn.get('decision')} tools={tools or ['(none)']}"
+            )
+            notes.append(f"fixture: {fixture}")
+            cards.append(
+                _make_card(
+                    shift_id,
+                    problem_class,
+                    [_turn_no(turn)],
+                    Evidence(
+                        guard_text=_turn_guard_text(turn),
+                        baseline_dms=dms,
+                        baseline_tools=tools,
+                        missing_tools=missing,
+                        notes=notes,
+                        scenario_run_id=run_id,
+                        fixture=fixture,
+                        failed_gate=gate,
+                    ),
+                    source="scenario",
+                )
+            )
+    cards.sort(key=lambda c: (_SEVERITY_ORDER[c.severity], c.turns[0], c.problem_class))
+    return cards
+
+
+def scenario_cards_from_result(
+    result: dict,
+    *,
+    runs_dir: str | Path | None = None,
+) -> list[ProblemCard]:
+    """Cards from an in-memory `execute_recipe` result for a scenario recipe."""
+    from harness.agent.catalog import (
+        LOOP_ELIGIBLE_SCORERS,
+        SCENARIO_RECIPES,
+        SCENARIO_RECIPE_NAMES,
+    )
+    from harness.store import ExperimentStore
+
+    plan = dict(result.get("plan") or {})
+    score = dict(result.get("score") or {})
+    recipe = str(plan.get("recipe") or "")
+    scorer = str(plan.get("scorer") or score.get("scorer") or "")
+    mode = str(plan.get("mode") or "")
+    run_id = str(plan.get("variant_run_id") or "")
+
+    if mode != "scenario" or recipe not in SCENARIO_RECIPE_NAMES:
+        raise ScenarioNotEligible(
+            f"{run_id or recipe!r} is not a deterministic scripted scenario "
+            f"(mode={mode!r}, recipe={recipe!r}); LOOP.md rule 1 forbids mining it"
+        )
+    if scorer not in LOOP_ELIGIBLE_SCORERS or run_id.startswith("sim") or mode == "simulation":
+        raise ScenarioNotEligible(
+            f"{run_id or recipe!r} is LLM-simulated evidence (scorer={scorer!r}); "
+            "simulation runs stay holdout-only (LOOP.md rule 1)"
+        )
+
+    jobs = plan.get("jobs") or [{}]
+    job = dict(jobs[0] or {})
+    shift_id = str(job.get("shift") or score.get("shift") or "")
+    if shift_id not in SCENARIO_RECIPES:
+        raise ScenarioNotEligible(f"unknown scenario shift {shift_id!r}")
+    fixture = str(job.get("fixture") or SCENARIO_RECIPES[shift_id]["fixture"])
+
+    if result.get("pass") or score.get("pass"):
+        return []
+
+    store = ExperimentStore(Path(runs_dir) if runs_dir else RUNS_DIR)
+    turns_by_rep: dict[int, list[dict]] = {}
+    for turn in store.load_turns(run_id, shift_id):
+        turns_by_rep.setdefault(int(turn.get("repetition") or 0), []).append(turn)
+
+    return _scenario_cards(
+        plan,
+        score,
+        turns_by_rep,
+        run_id=run_id,
+        fixture=fixture,
+        shift_id=shift_id,
+    )
+
+
+def mine_scenario_failure(
+    source: str | Path,
+    *,
+    runs_dir: str | Path | None = None,
+) -> list[ProblemCard]:
+    """Cards from a FAILED scripted-scenario run (id, run dir, or score path).
+
+    Reads the sealed `recipe_score.json` and the recorded turns. Every card
+    quotes the gate that failed, the failing turn's DMs and tools, and the
+    fixture it was scripted from. A passing run mines nothing; a simulation run
+    is refused (`ScenarioNotEligible`).
+    """
+    run_dir = _run_dir(source, runs_dir)
+    score_path = run_dir / "recipe_score.json"
+    if not score_path.exists():
+        raise FileNotFoundError(f"no recipe_score.json under {run_dir}")
+    result = dict(json.loads(score_path.read_text(encoding="utf-8")))
+    plan = dict(result.get("plan") or {})
+    # The directory we were handed is the run: it wins over the recorded id, so
+    # a copied / renamed run still reads its own turns.
+    plan["variant_run_id"] = run_dir.name
+    result["plan"] = plan
+    return scenario_cards_from_result(result, runs_dir=runs_dir or run_dir.parent)
+
+
+def mine_scenario(
+    recipe_name: str,
+    *,
+    dry_run: bool = True,
+    adapter: str = "openai",
+    model: str = "gpt-5.6-sol",
+    candidate_variant: str | None = None,
+    control_variant: str | None = None,
+    root: str | Path | None = None,
+    run_jobs_fn: Any = None,
+    recipes_path: str | Path | None = None,
+) -> list[ProblemCard]:
+    """Run one scripted scenario and mine it if it fails. `[]` when it passes."""
+    from harness.recipes import execute_recipe
+
+    if run_jobs_fn is None:
+        def run_jobs_fn(**_kw):  # pragma: no cover - scenario mode never calls it
+            raise RuntimeError("scenario recipes do not use run_jobs")
+
+    root_path = Path(root) if root else ROOT
+    result = execute_recipe(
+        recipe_name,
+        run_jobs_fn=run_jobs_fn,
+        root=root_path,
+        adapter=adapter,
+        model=model,
+        candidate_variant=candidate_variant,
+        control_variant=control_variant,
+        dry_run=dry_run,
+        recipes_path=Path(recipes_path) if recipes_path else None,
+    )
+    return scenario_cards_from_result(result, runs_dir=root_path / "runs")

@@ -576,9 +576,18 @@ def execute_recipe(
     jobs = recipe.get("jobs") or []
     if repeat is None:
         repeat = int(recipe.get("repetitions") or 1)
+    slug = name.replace("-", "_")
+    # Run ids are second-granular; the loop runs the same recipe twice (control
+    # arm then candidate arm) inside one second, and runs are append-only.
     stamp = _stamp()
-    control_id = f"ctrl_{name.replace('-', '_')}_{stamp}"
-    variant_id = f"var_{name.replace('-', '_')}_{stamp}"
+    suffix = 1
+    while (root / "runs" / f"ctrl_{slug}_{stamp}").exists() or (
+        root / "runs" / f"var_{slug}_{stamp}"
+    ).exists():
+        suffix += 1
+        stamp = f"{_stamp()}_{suffix}"
+    control_id = f"ctrl_{slug}_{stamp}"
+    variant_id = f"var_{slug}_{stamp}"
 
     plan = {
         "recipe": name,

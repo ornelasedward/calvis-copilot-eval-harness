@@ -336,7 +336,9 @@ def cmd_go(args: argparse.Namespace) -> None:
         confirm_execute,
         discover_changed_files,
         execute_plan,
+        failed_scenario_runs,
         format_plan_table,
+        format_self_fix_hint,
         resolve_variant_dir,
         save_plan,
     )
@@ -393,29 +395,167 @@ def cmd_go(args: argparse.Namespace) -> None:
         print("aborted")
         sys.exit(1)
 
-    def _exec(name: str) -> dict:
+    def _exec(name: str, repeat: int | None = None) -> dict:
+        # repeat=None lets execute_recipe use the recipe's own `repetitions`;
+        # execute_plan passes it explicitly so `cx go` gates a scenario at the
+        # same pass^k as `cx t`.
         return execute_recipe(
             name,
             run_jobs_fn=run_jobs,
             adapter=args.adapter,
             model=args.model,
             candidate_variant=variant_path,
-            repeat=1,
+            repeat=repeat,
             dry_run=False,
         )
 
     outcome = execute_plan(plan, execute_fn=_exec)
     failed = any(r.get("pass") is False for r in outcome.get("results") or [])
+
+    scenario_failures = failed_scenario_runs(outcome)
+    if scenario_failures:
+        print(format_self_fix_hint(scenario_failures), flush=True)
+    fixable = [r for r in scenario_failures if r["loop_eligible"] and r.get("run_id")]
+    if getattr(args, "fix", False):
+        if not fixable:
+            print("--fix: no loop-eligible scenario failure to self-fix.")
+        else:
+            target = fixable[0]
+            print(f"\n=== cx go --fix: cx loop --from-run runs/{target['run_id']} ===")
+            run_loop_from_scenario(
+                from_run=str(target["run_id"]),
+                adapter=args.adapter,
+                model=args.model,
+                dry_run=False,
+                budget=getattr(args, "budget", None),
+            )
+
     if outcome.get("halted") or failed:
         sys.exit(1)
 
 
-def cmd_loop(args: argparse.Namespace) -> None:
-    """Eval-loop agent (LOOP.md). `-n` is API-free: fixtures only, no model calls."""
+def _print_loop_result(result: dict) -> None:
     import json
 
-    from harness.agent.orchestrator import format_run_summary, run_loop
+    from harness.agent.orchestrator import format_run_summary
+
+    print(json.dumps(result["plan"], indent=2))
+    print(f"\nwrote {result['out_dir']}/manifest.json")
+    print("\n=== run ===")
+    print(format_run_summary(result))
+    if result.get("decision"):
+        print("\n=== last decision ===")
+        print(json.dumps(result["decision"], indent=2))
+
+
+def run_loop_from_scenario(
+    *,
+    from_run: str | None = None,
+    from_scenario: str | None = None,
+    adapter: str | None = None,
+    model: str | None = None,
+    dry_run: bool = False,
+    max_iterations: int = 3,
+    budget: float | None = None,
+    no_mint: bool = False,
+    compound: bool = False,
+) -> dict | None:
+    """Mine a FAILED scripted scenario into cards, then run the normal loop.
+
+    Same pipeline as a shift loop (diagnose → patch → evaluate → decide); only
+    the card source differs. Simulation runs are refused (LOOP.md rule 1).
+    """
+    from harness.agent.mine import (
+        ScenarioNotEligible,
+        mine_scenario,
+        mine_scenario_failure,
+    )
+    from harness.agent.orchestrator import run_loop
     from harness.agent.types import LoopConfig
+    from harness.recipes import resolve_recipe_name
+
+    try:
+        if from_run:
+            cards = mine_scenario_failure(from_run, runs_dir=ROOT / "runs")
+            source = f"run {from_run}"
+        else:
+            name = resolve_recipe_name(str(from_scenario))
+            print(f"=== cx loop: running scenario {name} to look for a failure ===")
+            cards = mine_scenario(
+                name,
+                dry_run=bool(dry_run),
+                adapter=adapter or "openai",
+                model=model or "gpt-5.6-sol",
+                run_jobs_fn=run_jobs,
+                root=ROOT,
+            )
+            source = f"scenario {name}"
+    except ScenarioNotEligible as exc:
+        sys.exit(f"cannot self-fix from this run: {exc}")
+    except (FileNotFoundError, KeyError) as exc:
+        sys.exit(f"cannot read that scenario source: {exc}")
+
+    if not cards:
+        print(f"{source} passed its gates — nothing to mine, no loop to run.")
+        return None
+
+    shift_id = str(cards[0].shift_id)
+    print(f"mined {len(cards)} scenario card(s) from {source}:")
+    for card in cards:
+        print(f"  {card.id}  gate={card.evidence.failed_gate}  turns={card.turns}")
+
+    def mine_fn(sid: str, *_a, **_kw):
+        # The cards are already mined; other shift ids (the generalization
+        # spot-check) legitimately mine nothing here.
+        return list(cards) if str(sid) == shift_id else []
+
+    cfg = LoopConfig(
+        shift_id=shift_id,
+        dry_run=bool(dry_run),
+        adapter=adapter or "openai",
+        model=model or "gpt-5.6-sol",
+        max_iterations=int(max_iterations or 3),
+    )
+    result = run_loop(
+        cfg,
+        mine_fn=mine_fn,
+        budget_usd=budget,
+        mint=not no_mint,
+        compound=bool(compound),
+    )
+    _print_loop_result(result)
+    return result
+
+
+def cmd_loop(args: argparse.Namespace) -> None:
+    """Eval-loop agent (LOOP.md). `-n` is API-free: fixtures only, no model calls."""
+    from harness.agent.orchestrator import run_loop
+    from harness.agent.types import LoopConfig
+
+    from_run = getattr(args, "from_run", None)
+    from_scenario = getattr(args, "from_scenario", None)
+    if from_run and from_scenario:
+        sys.exit("use --from-run or --from-scenario, not both")
+    if from_run or from_scenario:
+        if args.shift:
+            sys.exit("a shift id and --from-run/--from-scenario are different sources")
+        run_loop_from_scenario(
+            from_run=from_run,
+            from_scenario=from_scenario,
+            adapter=getattr(args, "adapter", None),
+            model=getattr(args, "model", None),
+            dry_run=bool(args.dry_run),
+            max_iterations=int(getattr(args, "max_iterations", None) or 3),
+            budget=getattr(args, "budget", None),
+            no_mint=bool(getattr(args, "no_mint", False)),
+            compound=bool(getattr(args, "compound", False)),
+        )
+        return
+
+    if not args.shift:
+        sys.exit(
+            "cx loop needs a shift id, --from-scenario <recipe>, or --from-run <run_id>"
+        )
 
     cfg = LoopConfig(
         shift_id=str(args.shift),
@@ -430,13 +570,7 @@ def cmd_loop(args: argparse.Namespace) -> None:
         mint=not getattr(args, "no_mint", False),
         compound=bool(getattr(args, "compound", False)),
     )
-    print(json.dumps(result["plan"], indent=2))
-    print(f"\nwrote {result['out_dir']}/manifest.json")
-    print("\n=== run ===")
-    print(format_run_summary(result))
-    if result.get("decision"):
-        print("\n=== last decision ===")
-        print(json.dumps(result["decision"], indent=2))
+    _print_loop_result(result)
 
 
 def cmd_sim(args: argparse.Namespace) -> None:
@@ -695,6 +829,14 @@ def main(argv: list[str] | None = None) -> None:
     )
     g.add_argument("--adapter", choices=["anthropic", "openai"], default=None)
     g.add_argument("--model", default=None)
+    g.add_argument(
+        "--fix",
+        action="store_true",
+        help=(
+            "After the plan runs, self-fix the first FAILED scripted scenario "
+            "with cx loop --from-run (never for sim-* failures)"
+        ),
+    )
     g.set_defaults(func=cmd_go)
 
     sm = sub.add_parser(
@@ -821,7 +963,28 @@ def main(argv: list[str] | None = None) -> None:
         "loop",
         help="Eval-loop agent: mine shift JSON → diagnose → patch → score (see LOOP.md)",
     )
-    lp.add_argument("shift", help="Shift id (e.g. 50737). Dataset is shifts/<id>.json")
+    lp.add_argument(
+        "shift",
+        nargs="?",
+        default=None,
+        help="Shift id (e.g. 50737). Dataset is shifts/<id>.json",
+    )
+    lp.add_argument(
+        "--from-scenario",
+        default=None,
+        help=(
+            "Run a scripted scenario (recipe name or alias, e.g. photo-gamer / ag) "
+            "and self-fix it if it FAILS"
+        ),
+    )
+    lp.add_argument(
+        "--from-run",
+        default=None,
+        help=(
+            "Self-fix an already-recorded failed scenario run "
+            "(runs/<id> or the run id; never a sim-* run)"
+        ),
+    )
     lp.add_argument("--adapter", choices=["anthropic", "openai"], default="openai")
     lp.add_argument("--model", default="gpt-5.6-sol")
     lp.add_argument(

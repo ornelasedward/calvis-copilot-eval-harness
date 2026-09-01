@@ -414,3 +414,109 @@ def test_cx_t_alias_untouched_dry_run():
     assert proc.returncode == 0, proc.stderr + proc.stdout
     assert "b-claims" in proc.stdout
     assert "verify_b" in proc.stdout
+
+
+# ---------------------------------------------------------------------------
+# pass^k: `cx go` must gate a recipe as hard as `cx t` does
+# ---------------------------------------------------------------------------
+
+
+def test_execute_plan_honors_each_recipe_repetitions():
+    from harness.recipes import load_recipes
+
+    book = load_recipes()
+    plan = {"order": ["smoke-welcome", "photo-gamer", "a3-shift-55252", "sim-50737"]}
+    seen: dict[str, int | None] = {}
+
+    def fake_exec(name: str, repeat: int | None = None) -> dict:
+        seen[name] = repeat
+        return {"pass": True}
+
+    out = execute_plan(plan, execute_fn=fake_exec, recipes_data=book)
+    # scenario / simulation recipes declare repetitions; turn+shift recipes do not
+    assert seen["photo-gamer"] == 3
+    assert seen["sim-50737"] == 3
+    assert seen["smoke-welcome"] == 1
+    assert seen["a3-shift-55252"] == 1
+    assert [r["repetitions"] for r in out["results"]] == [1, 3, 1, 3]
+
+
+def test_execute_plan_still_accepts_a_one_arg_executor():
+    book = fake_book()
+    calls: list[str] = []
+
+    def fake_exec(name: str) -> dict:
+        calls.append(name)
+        return {"pass": True}
+
+    execute_plan(
+        {"order": ["smoke-welcome", "lift-foo"]}, execute_fn=fake_exec, recipes_data=book
+    )
+    assert calls == ["smoke-welcome", "lift-foo"]
+
+
+def test_cmd_go_does_not_pin_repetitions_to_one():
+    """cx go used to run scenarios at pass^1 while cx t ran pass^3."""
+    source = (ROOT / "cli.py").read_text(encoding="utf-8")
+    body = source.split("def cmd_go(")[1].split("\ndef ")[0]
+    assert "repeat=1" not in body
+    assert "repeat=repeat" in body
+
+
+# ---------------------------------------------------------------------------
+# self-fix hand-off
+# ---------------------------------------------------------------------------
+
+
+def _failed_outcome(recipe: str, mode: str, scorer: str, run_id: str) -> dict:
+    return {
+        "results": [
+            {
+                "id": recipe,
+                "pass": False,
+                "result": {
+                    "plan": {
+                        "recipe": recipe,
+                        "mode": mode,
+                        "scorer": scorer,
+                        "variant_run_id": run_id,
+                        "repetitions": 3,
+                    },
+                    "score": {"detail": "pass^k failed on repetitions [0]."},
+                    "pass": False,
+                },
+            }
+        ]
+    }
+
+
+def test_failed_scenario_is_handed_to_the_loop():
+    from harness.router import failed_scenario_runs, format_self_fix_hint
+
+    rows = failed_scenario_runs(
+        _failed_outcome("photo-gamer", "scenario", "photo_gamer", "var_photo_gamer_x")
+    )
+    assert len(rows) == 1 and rows[0]["loop_eligible"] is True
+    hint = format_self_fix_hint(rows)
+    assert "loop --from-run runs/var_photo_gamer_x" in hint
+
+
+def test_failed_simulation_is_not_handed_to_the_loop():
+    from harness.router import failed_scenario_runs, format_self_fix_hint
+
+    rows = failed_scenario_runs(
+        _failed_outcome("sim-50737", "simulation", "simulation_conduct", "var_sim_x")
+    )
+    assert len(rows) == 1 and rows[0]["loop_eligible"] is False
+    hint = format_self_fix_hint(rows)
+    assert "simulation-only evidence" in hint
+    assert "--from-run" not in hint
+
+
+def test_passing_plan_has_no_self_fix_hint():
+    from harness.router import failed_scenario_runs, format_self_fix_hint
+
+    outcome = _failed_outcome("photo-gamer", "scenario", "photo_gamer", "var_x")
+    outcome["results"][0]["pass"] = True
+    assert failed_scenario_runs(outcome) == []
+    assert format_self_fix_hint([]) == ""
