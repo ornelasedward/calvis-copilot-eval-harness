@@ -21,6 +21,7 @@ Set API keys in `.env`, then use the **short** launcher from the repo root:
 .\cx t qt             # quietness probe (A3)
 .\cx why v3           # advisor on Variant A3 diff
 .\cx why vb -n        # advisor on B, no LLM
+.\cx mine --dry       # failure-mode miner (sweep + gap report, no API)
 ```
 
 | Code | Means |

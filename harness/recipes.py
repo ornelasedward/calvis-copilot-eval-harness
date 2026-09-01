@@ -20,6 +20,43 @@ def load_recipes(path: Path | None = None) -> dict:
     return json.loads(p.read_text(encoding="utf-8"))
 
 
+def miner_defaults(path: Path | None = None) -> dict:
+    """Return miner adapter/model. Model must differ from the copilot default."""
+    data = load_recipes(path)
+    defaults = data.get("defaults") or {}
+    miner = dict(defaults.get("miner") or {})
+    copilot_model = defaults.get("model") or "gpt-5.6-sol"
+    miner.setdefault("adapter", defaults.get("adapter") or "openai")
+    if not miner.get("model"):
+        raise KeyError("recipes.json defaults.miner.model is required")
+    if miner["model"] == copilot_model:
+        raise ValueError(
+            f"miner.model ({miner['model']}) must differ from copilot model ({copilot_model})"
+        )
+    miner["copilot_model"] = copilot_model
+    return miner
+
+
+def list_cards(path: Path | None = None) -> list[dict]:
+    """Catalog cards used by the miner gap analysis (covers + intent)."""
+    data = load_recipes(path)
+    rows = []
+    for name, r in (data.get("recipes") or {}).items():
+        card = dict(r.get("card") or {})
+        rows.append(
+            {
+                "recipe": name,
+                "intent": card.get("intent") or r.get("description") or "",
+                "risk_class": card.get("risk_class") or "",
+                "covers": list(card.get("covers") or []),
+                "required_when": list(
+                    card.get("required_when") or r.get("suggested_when") or []
+                ),
+            }
+        )
+    return rows
+
+
 def resolve_recipe_name(name: str, path: Path | None = None) -> str:
     """Resolve short alias (b, a3, smoke) to full recipe id."""
     data = load_recipes(path)

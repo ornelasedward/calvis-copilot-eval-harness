@@ -34,6 +34,7 @@ def _help() -> None:
   cx | cx ls                 list codes
   cx t <code> [-n]           run test recipe
   cx why <code> [-n]         analyze prompt vs baseline
+  cx mine [--dry] [--limit N]  mine shifts/runs for uncovered failure modes
 
   Test codes:   wl=welcome  cl=claims  es=escalation  qt=quietness
   Why codes:    va=A  v2=A2  v3=A3  vb=B
@@ -42,6 +43,7 @@ Examples:
   .\\cx t cl -n
   .\\cx t es
   .\\cx why v3 -n
+  .\\cx mine --dry
 """
     )
 
@@ -111,6 +113,21 @@ def main(argv: list[str] | None = None) -> None:
                 no_llm=no_llm,
             )
         )
+        return
+
+    if cmd in ("mine", "m"):
+        dry = any(a in ("-n", "--dry", "--dry-run") for a in rest)
+        no_proposals = "--no-proposals" in rest
+        limit = 30
+        if "--limit" in rest:
+            i = rest.index("--limit")
+            try:
+                limit = int(rest[i + 1])
+            except (IndexError, ValueError):
+                sys.exit("usage: calvis mine [--dry] [--limit N]")
+        from harness.miner import run_mine
+
+        run_mine(dry=dry, limit=limit, write_proposals=not no_proposals)
         return
 
     sys.exit(f"unknown command: {cmd}\nTry: py calvis.py help")

@@ -347,6 +347,12 @@ def cmd_analyze(args: argparse.Namespace) -> None:
     print(f"\nwrote {out['out_dir']}/advisor_report.md")
 
 
+def _cmd_mine(args: argparse.Namespace) -> None:
+    from harness.miner import cmd_mine
+
+    cmd_mine(args)
+
+
 def main(argv: list[str] | None = None) -> None:
     p = argparse.ArgumentParser(prog="calvis-eval")
     sub = p.add_subparsers(dest="cmd", required=True)
@@ -409,6 +415,31 @@ def main(argv: list[str] | None = None) -> None:
     a.add_argument("--model", default="gpt-5.6-sol")
     a.add_argument("--no-llm", action="store_true", help="Facts + stub narrative only")
     a.set_defaults(func=cmd_analyze)
+
+    m = sub.add_parser(
+        "mine",
+        help="Mine shifts/runs for failure modes with no recipe card (never writes the catalog)",
+    )
+    m.add_argument(
+        "--dry",
+        "--dry-run",
+        "-n",
+        dest="dry",
+        action="store_true",
+        help="Stage 1 sweep + gap report only; zero API calls",
+    )
+    m.add_argument(
+        "--limit",
+        type=int,
+        default=30,
+        help="Max flagged threads sent to the LLM (default 30); extras are logged",
+    )
+    m.add_argument(
+        "--no-proposals",
+        action="store_true",
+        help="Skip writing experiments/proposals/*.json",
+    )
+    m.set_defaults(func=_cmd_mine)
 
     args = p.parse_args(argv)
     args.func(args)
